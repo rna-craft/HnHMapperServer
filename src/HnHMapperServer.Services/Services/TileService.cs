@@ -239,9 +239,8 @@ public class TileService : ITileService
                     if (rebuiltCount >= maxTilesToRebuild)
                         break;
 
-                    // Check if all 4 sub-tiles exist at the previous zoom level
+                    // Check how many sub-tiles exist at the previous zoom level
                     var subTilesExist = new List<TileData>();
-                    bool allSubTilesExist = true;
                     int subTileCount = 0;
 
                     for (int x = 0; x <= 1; x++)
@@ -258,24 +257,19 @@ public class TileService : ITileService
                                 t.Coord.X == subCoord.X &&
                                 t.Coord.Y == subCoord.Y);
 
-                            if (subTile == null || string.IsNullOrEmpty(subTile.File))
+                            if (subTile != null && !string.IsNullOrEmpty(subTile.File))
                             {
-                                allSubTilesExist = false;
-                                break;
+                                subTileCount++;
+                                subTilesExist.Add(subTile);
                             }
-
-                            subTileCount++;
-                            subTilesExist.Add(subTile);
                         }
-
-                        if (!allSubTilesExist)
-                            break;
                     }
 
                     bool shouldRebuild = false;
                     string rebuildReason = "";
 
-                    if (allSubTilesExist)
+                    // Rebuild if we have at least ONE sub-tile (allows partial coverage)
+                    if (subTileCount > 0)
                     {
                         // Check if any sub-tile has a different timestamp than the zoom tile
                         bool hasNewerThanZoom = subTilesExist.Any(st => st.Cache > zoomTile.Cache);
@@ -287,17 +281,17 @@ public class TileService : ITileService
                         if (hasNewerThanZoom)
                         {
                             shouldRebuild = true;
-                            rebuildReason = "has newer sub-tiles";
+                            rebuildReason = $"has newer sub-tiles ({subTileCount}/4)";
                         }
                         else if (hasVaryingSubTileTimestamps)
                         {
                             shouldRebuild = true;
-                            rebuildReason = "sub-tiles have varying timestamps";
+                            rebuildReason = $"sub-tiles have varying timestamps ({subTileCount}/4)";
                         }
                     }
 
                     // Track why we're skipping tiles
-                    if (!allSubTilesExist)
+                    if (subTileCount == 0)
                     {
                         skippedMissingSubTiles++;
                     }
