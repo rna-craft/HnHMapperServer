@@ -12,8 +12,7 @@
 # them from the same domain. Caddy automatically provisions HTTPS with Let's Encrypt.
 
 # Domain configuration with automatic HTTPS
-# Replace 'yourdomain.com' with your actual domain (e.g., mapper.example.com)
-yourdomain.com {
+${env.CADDY_DOMAIN} {
   # Security headers for production deployment
   header {
     # Prevent MIME type sniffing
