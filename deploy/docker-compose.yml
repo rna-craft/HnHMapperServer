@@ -1,9 +1,6 @@
 # Docker Compose stack for HnH Mapper production deployment (MULTI-TENANT)
 # Includes: API service, Web service, Caddy reverse proxy, and Watchtower for auto-updates
 #
-# IMPORTANT: Replace 'OWNER' in image names with your GitHub username/organization
-# Example: ghcr.io/yourusername/hnhmapper-api:main
-#
 # Prerequisites:
 # - Create /srv/hnh-map directory on the host with appropriate permissions
 # - Copy this file and Caddyfile to /opt/hnhmap/ on the VPS
@@ -25,8 +22,7 @@ services:
   # ============================================================================
   api:
     # Pull image from GitHub Container Registry
-    # Replace OWNER with your GitHub username or organization
-    image: ghcr.io/OWNER/hnhmapper-api:main
+    image: ghcr.io/${UPSTREAM}/hnhmapper-api:main
     
     # Build configuration (used when building locally instead of pulling from registry)
     # Uncomment 'build' section and comment out 'image' to build locally
@@ -99,8 +95,7 @@ services:
   # ============================================================================
   web:
     # Pull image from GitHub Container Registry
-    # Replace OWNER with your GitHub username or organization
-    image: ghcr.io/OWNER/hnhmapper-web:main
+    image: ghcr.io/${UPSTREAM}/hnhmapper-web:main
     
     # Build configuration (used when building locally instead of pulling from registry)
     # Uncomment 'build' section and comment out 'image' to build locally
@@ -148,13 +143,25 @@ services:
   # Caddy Reverse Proxy - Routes traffic to API and Web services with HTTPS
   # ============================================================================
   caddy:
-    # Official Caddy image (Alpine-based, lightweight)
-    image: caddy:2
+    # Build custom Caddy image with Cloudflare DNS plugin for DNS-01 ACME challenges
+    build:
+      context: ..
+      dockerfile: docker/caddy-cloudflare.Dockerfile
 
     container_name: hnhm-caddy
 
     # Restart policy: always restart unless manually stopped
     restart: unless-stopped
+
+    # Environment variables for Cloudflare DNS-01 ACME challenges
+    # Set these in .env file:
+    # - CADDY_DOMAIN: Your domain name (e.g., example.com)
+    # - CLOUDFLARE_API_TOKEN: Cloudflare API token with DNS edit permissions
+    # - CLOUDFLARE_EMAIL: Email for Let's Encrypt notifications
+    environment:
+      - CADDY_DOMAIN=${CADDY_DOMAIN}
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      - CLOUDFLARE_EMAIL=${CLOUDFLARE_EMAIL}
 
     # Expose HTTP and HTTPS ports to the host (public access points)
     ports:
@@ -180,7 +187,7 @@ services:
   # ============================================================================
   watchtower:
     # Official Watchtower image for automatic Docker updates
-    image: containrrr/watchtower
+    image: nickfedor/watchtower
     
     container_name: hnhm-watchtower
     
