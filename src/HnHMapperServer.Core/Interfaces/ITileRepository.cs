@@ -10,5 +10,5 @@ public interface ITileRepository
     Task DeleteTilesByMapAsync(int mapId);
 
     // Batch operations for optimized import
-    Task SaveTilesBatchAsync(IEnumerable<TileData> tiles);
+    Task SaveTilesBatchAsync(IEnumerable<TileData> tiles, bool skipExistenceCheck = false);
 }

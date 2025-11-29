@@ -215,17 +215,26 @@ public class GridRepository : IGridRepository
         return result;
     }
 
-    public async Task SaveGridsBatchAsync(IEnumerable<GridData> grids)
+    public async Task SaveGridsBatchAsync(IEnumerable<GridData> grids, bool skipExistenceCheck = false)
     {
         var gridList = grids.ToList();
         if (gridList.Count == 0) return;
 
         var currentTenantId = _tenantContext.GetRequiredTenantId();
 
-        // Filter out grids that already exist to avoid UNIQUE constraint violations
-        var gridIds = gridList.Select(g => g.Id).ToList();
-        var existingIds = await GetExistingGridIdsAsync(gridIds);
-        var newGrids = gridList.Where(g => !existingIds.Contains(g.Id)).ToList();
+        List<GridData> newGrids;
+        if (skipExistenceCheck)
+        {
+            // Caller has already filtered - skip redundant DB query
+            newGrids = gridList;
+        }
+        else
+        {
+            // Filter out grids that already exist to avoid UNIQUE constraint violations
+            var gridIds = gridList.Select(g => g.Id).ToList();
+            var existingIds = await GetExistingGridIdsAsync(gridIds);
+            newGrids = gridList.Where(g => !existingIds.Contains(g.Id)).ToList();
+        }
 
         if (newGrids.Count == 0) return;
 

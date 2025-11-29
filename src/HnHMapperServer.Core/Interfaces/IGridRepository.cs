@@ -14,5 +14,5 @@ public interface IGridRepository
 
     // Batch operations for optimized import
     Task<HashSet<string>> GetExistingGridIdsAsync(IEnumerable<string> gridIds);
-    Task SaveGridsBatchAsync(IEnumerable<GridData> grids);
+    Task SaveGridsBatchAsync(IEnumerable<GridData> grids, bool skipExistenceCheck = false);
 }

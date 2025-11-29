@@ -150,30 +150,51 @@ public class TileRepository : ITileRepository
         FileSizeBytes = tile.FileSizeBytes
     };
 
-    public async Task SaveTilesBatchAsync(IEnumerable<TileData> tiles)
+    public async Task SaveTilesBatchAsync(IEnumerable<TileData> tiles, bool skipExistenceCheck = false)
     {
         var tileList = tiles.ToList();
         if (tileList.Count == 0) return;
+
+        if (skipExistenceCheck)
+        {
+            // Caller guarantees no duplicates (e.g., newly generated zoom tiles)
+            // Skip the expensive existence check query
+            var tileEntities = tileList.Select(MapFromDomain).ToList();
+            _context.Tiles.AddRange(tileEntities);
+            await _context.SaveChangesAsync();
+            return;
+        }
 
         // Filter out tiles that already exist to avoid UNIQUE constraint violations
         // Tile uniqueness: (MapId, CoordX, CoordY, Zoom, TenantId)
         var existingKeys = new HashSet<(int MapId, int X, int Y, int Zoom, string TenantId)>();
 
-        // Check in chunks to avoid huge IN clauses
+        // Check in chunks with optimized coordinate-specific queries
         const int chunkSize = 500;
         foreach (var chunk in tileList.Chunk(chunkSize))
         {
-            var chunkMapIds = chunk.Select(t => t.MapId).Distinct().ToList();
-            var existing = await _context.Tiles
-                .IgnoreQueryFilters()
-                .AsNoTracking()
-                .Where(t => chunkMapIds.Contains(t.MapId))
-                .Select(t => new { t.MapId, t.CoordX, t.CoordY, t.Zoom, t.TenantId })
-                .ToListAsync();
-
-            foreach (var e in existing)
+            // Group by (MapId, Zoom, TenantId) for more efficient queries
+            foreach (var group in chunk.GroupBy(t => new { t.MapId, t.Zoom, t.TenantId }))
             {
-                existingKeys.Add((e.MapId, e.CoordX, e.CoordY, e.Zoom, e.TenantId));
+                var xCoords = group.Select(t => t.Coord.X).Distinct().ToList();
+                var yCoords = group.Select(t => t.Coord.Y).Distinct().ToList();
+
+                // Query only for specific coordinates instead of entire map
+                var existing = await _context.Tiles
+                    .IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .Where(t => t.MapId == group.Key.MapId
+                             && t.Zoom == group.Key.Zoom
+                             && t.TenantId == group.Key.TenantId
+                             && xCoords.Contains(t.CoordX)
+                             && yCoords.Contains(t.CoordY))
+                    .Select(t => new { t.MapId, t.CoordX, t.CoordY, t.Zoom, t.TenantId })
+                    .ToListAsync();
+
+                foreach (var e in existing)
+                {
+                    existingKeys.Add((e.MapId, e.CoordX, e.CoordY, e.Zoom, e.TenantId));
+                }
             }
         }
 

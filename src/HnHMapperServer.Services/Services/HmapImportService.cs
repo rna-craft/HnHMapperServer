@@ -860,7 +860,7 @@ public class HmapImportService : IHmapImportService
         // Consumer: Sequential I/O and batched DB writes
 
         const int RENDER_PARALLELISM = 4; // CPU-bound rendering parallelism
-        const int CHANNEL_CAPACITY = 20;  // Bounded buffer to limit memory
+        const int CHANNEL_CAPACITY = 50;  // Increased from 20 for better buffering
         const int BATCH_SIZE = 500;       // DB batch size
 
         var channel = Channel.CreateBounded<RenderedGrid>(new BoundedChannelOptions(CHANNEL_CAPACITY)
@@ -879,7 +879,7 @@ public class HmapImportService : IHmapImportService
         var producerTask = Task.Run(async () =>
         {
             using var semaphore = new SemaphoreSlim(RENDER_PARALLELISM);
-            const int TASK_BATCH_SIZE = 500;
+            const int TASK_BATCH_SIZE = 100;  // Reduced from 500 for more frequent sync points
             var renderTasks = new List<Task>(TASK_BATCH_SIZE);
 
             try
@@ -1064,12 +1064,14 @@ public class HmapImportService : IHmapImportService
 
         if (grids.Count > 0)
         {
-            await _gridRepository.SaveGridsBatchAsync(grids);
+            // Import service already filters to only new grids - skip redundant existence check
+            await _gridRepository.SaveGridsBatchAsync(grids, skipExistenceCheck: true);
         }
 
         if (tiles.Count > 0)
         {
-            await _tileRepository.SaveTilesBatchAsync(tiles);
+            // Newly generated tiles from imported grids - skip redundant existence check
+            await _tileRepository.SaveTilesBatchAsync(tiles, skipExistenceCheck: true);
         }
 
         if (storageMB > 0 && grids.Count > 0)
@@ -1334,7 +1336,8 @@ public class HmapImportService : IHmapImportService
         var (tiles, totalMB) = cache.ExtractPendingMetadata();
         if (tiles.Count > 0)
         {
-            await _tileRepository.SaveTilesBatchAsync(tiles);
+            // Zoom tiles are freshly generated - skip redundant existence check
+            await _tileRepository.SaveTilesBatchAsync(tiles, skipExistenceCheck: true);
             await _quotaService.IncrementStorageUsageAsync(tenantId, totalMB);
 
             _logger.LogInformation("Zoom generation complete for map {MapId}: {TileCount} tiles, {StorageMB:F2} MB",
@@ -1357,7 +1360,7 @@ public class HmapImportService : IHmapImportService
         CancellationToken cancellationToken)
     {
         const int WORKER_COUNT = 4;
-        const int CHANNEL_CAPACITY = 20;
+        const int CHANNEL_CAPACITY = 50;  // Increased from 20 for better buffering
 
         var channel = Channel.CreateBounded<RenderedZoomTile>(
             new BoundedChannelOptions(CHANNEL_CAPACITY)
@@ -1376,7 +1379,7 @@ public class HmapImportService : IHmapImportService
         var producerTask = Task.Run(async () =>
         {
             using var semaphore = new SemaphoreSlim(WORKER_COUNT);
-            const int TASK_BATCH_SIZE = 500;
+            const int TASK_BATCH_SIZE = 100;  // Reduced from 500 for more frequent sync points
             var tasks = new List<Task>(TASK_BATCH_SIZE);
 
             try
@@ -1386,15 +1389,15 @@ public class HmapImportService : IHmapImportService
                     cancellationToken.ThrowIfCancellationRequested();
                     await semaphore.WaitAsync(cancellationToken);
 
-                    var renderTask = Task.Run(() =>
+                    var renderTask = Task.Run(async () =>
                     {
                         try
                         {
                             var result = RenderZoomTile(mapId, zoom, coord, tenantId, gridStorage, cache);
                             if (result != null)
                             {
-                                // WriteAsync is async but we're in a sync context, use synchronous wait
-                                channel.Writer.WriteAsync(result, cancellationToken).AsTask().Wait(cancellationToken);
+                                // Properly await channel write to avoid thread pool starvation
+                                await channel.Writer.WriteAsync(result, cancellationToken);
                             }
                         }
                         finally
