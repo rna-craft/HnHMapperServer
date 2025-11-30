@@ -7,6 +7,7 @@ using HnHMapperServer.Web.Components.Map.Dialogs;
 using HnHMapperServer.Core.Enums;
 using HnHMapperServer.Core.Extensions;
 using HnHMapperServer.Core.DTOs;
+using HnHMapperServer.Services.Interfaces;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.JSInterop;
@@ -60,8 +61,14 @@ public partial class Map : IAsyncDisposable, IBrowserViewportObserver
     [Inject] private MapNavigationService MapNavigation { get; set; } = default!;
     [Inject] private LayerVisibilityService LayerVisibility { get; set; } = default!;
     [Inject] private SafeJsInterop SafeJs { get; set; } = default!;
+    [Inject] private IBuildInfoProvider BuildInfo { get; set; } = default!;
 
     #endregion
+
+    /// <summary>
+    /// Version suffix for cache busting dynamic JS imports (uses commit hash from BuildInfo)
+    /// </summary>
+    private string JsVersion => $"?v={BuildInfo.Get("web").Commit}";
 
     #region Component References
 
@@ -786,7 +793,7 @@ public partial class Map : IAsyncDisposable, IBrowserViewportObserver
     {
         if (mapView != null)
         {
-            leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/leaflet-interop.js");
+            leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", $"./js/leaflet-interop.js{JsVersion}");
             var success = await leafletModule.InvokeAsync<bool>("jumpToLatestPing");
 
             if (!success)
@@ -1950,7 +1957,7 @@ public partial class Map : IAsyncDisposable, IBrowserViewportObserver
                 return;
             }
 
-            sseModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/map-updates.js");
+            sseModule ??= await JS.InvokeAsync<IJSObjectReference>("import", $"./js/map-updates.js{JsVersion}");
             sseDotnetRef ??= DotNetObjectReference.Create(this);
             await sseModule.InvokeVoidAsync("initializeSseUpdates", sseDotnetRef);
             Logger.LogInformation("SSE connection initialized successfully");
@@ -2225,7 +2232,7 @@ public partial class Map : IAsyncDisposable, IBrowserViewportObserver
 
         if (mapView != null)
         {
-            leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/leaflet-interop.js");
+            leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", $"./js/leaflet-interop.js{JsVersion}");
             await leafletModule.InvokeVoidAsync("toggleCustomMarkers", show);
         }
 
@@ -2235,7 +2242,7 @@ public partial class Map : IAsyncDisposable, IBrowserViewportObserver
     private async Task TogglePClaim()
     {
         showPClaim = !showPClaim;
-        leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/leaflet-interop.js");
+        leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", $"./js/leaflet-interop.js{JsVersion}");
         await leafletModule.InvokeVoidAsync("setOverlayTypeEnabled", "ClaimFloor", showPClaim);
         await leafletModule.InvokeVoidAsync("setOverlayTypeEnabled", "ClaimOutline", showPClaim);
         await InvokeAsync(StateHasChanged);
@@ -2244,7 +2251,7 @@ public partial class Map : IAsyncDisposable, IBrowserViewportObserver
     private async Task ToggleVClaim()
     {
         showVClaim = !showVClaim;
-        leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/leaflet-interop.js");
+        leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", $"./js/leaflet-interop.js{JsVersion}");
         await leafletModule.InvokeVoidAsync("setOverlayTypeEnabled", "VillageFloor", showVClaim);
         await leafletModule.InvokeVoidAsync("setOverlayTypeEnabled", "VillageOutline", showVClaim);
         await InvokeAsync(StateHasChanged);
@@ -2253,7 +2260,7 @@ public partial class Map : IAsyncDisposable, IBrowserViewportObserver
     private async Task ToggleProvince()
     {
         showProvince = !showProvince;
-        leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/leaflet-interop.js");
+        leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", $"./js/leaflet-interop.js{JsVersion}");
         await leafletModule.InvokeVoidAsync("setOverlayTypeEnabled", "Province0", showProvince);
         await leafletModule.InvokeVoidAsync("setOverlayTypeEnabled", "Province1", showProvince);
         await leafletModule.InvokeVoidAsync("setOverlayTypeEnabled", "Province2", showProvince);
@@ -2265,7 +2272,7 @@ public partial class Map : IAsyncDisposable, IBrowserViewportObserver
     private async Task ToggleThingwallHighlight()
     {
         showThingwallHighlight = !showThingwallHighlight;
-        leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/leaflet-interop.js");
+        leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", $"./js/leaflet-interop.js{JsVersion}");
         await leafletModule.InvokeVoidAsync("setThingwallHighlightEnabled", showThingwallHighlight);
         await InvokeAsync(StateHasChanged);
     }
@@ -2384,7 +2391,7 @@ public partial class Map : IAsyncDisposable, IBrowserViewportObserver
             if (mapView != null)
             {
                 Console.WriteLine("[Map.razor.cs] mapView is not null, getting leaflet module");
-                leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/leaflet-interop.js");
+                leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", $"./js/leaflet-interop.js{JsVersion}");
                 Console.WriteLine("[Map.razor.cs] Calling onPingCreated in JS");
                 await leafletModule.InvokeVoidAsync("onPingCreated", pingData);
                 Console.WriteLine("[Map.razor.cs] onPingCreated completed");
@@ -2418,7 +2425,7 @@ public partial class Map : IAsyncDisposable, IBrowserViewportObserver
             // Forward to JavaScript ping manager
             if (mapView != null)
             {
-                leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/leaflet-interop.js");
+                leafletModule ??= await JS.InvokeAsync<IJSObjectReference>("import", $"./js/leaflet-interop.js{JsVersion}");
                 await leafletModule.InvokeVoidAsync("onPingDeleted", deleteData.Id);
 
                 // Check if there are still active pings

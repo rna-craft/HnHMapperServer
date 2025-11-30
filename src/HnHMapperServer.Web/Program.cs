@@ -625,10 +625,10 @@ app.MapGet("/map/grids/{**path}", async (
       .SetVaryByRouteValue("path")       // Vary by tile path (mapId/zoom/x_y)
       .Tag("tiles"));                     // Tag for bulk invalidation if needed
 
-// Blazor initializers endpoint - returns expected format (no custom initializers needed)
+// Blazor initializers endpoint - returns empty array (no custom JS initializers)
 // This prevents 404 errors in browser console when Blazor tries to fetch initializers
-// .NET 8+ Blazor Web expects { beforeWebStart: [], afterWebStarted: [] } structure
-app.MapGet("/_blazor/initializers", () => Results.Json(new { beforeWebStart = Array.Empty<object>(), afterWebStarted = Array.Empty<object>() }));
+// importInitializersAsync expects an array of initializer file paths to import
+app.MapGet("/_blazor/initializers", () => Results.Json(Array.Empty<string>()));
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
