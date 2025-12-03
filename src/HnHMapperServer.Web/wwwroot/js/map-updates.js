@@ -164,6 +164,36 @@ function connectSse() {
             }
         });
 
+        // Game marker created event
+        eventSource.addEventListener('markerCreated', function (event) {
+            try {
+                const marker = JSON.parse(event.data);
+                invokeDotNetSafe('OnMarkerCreated', marker);
+            } catch (e) {
+                console.error('[SSE] Error parsing markerCreated event:', e);
+            }
+        });
+
+        // Game marker updated event
+        eventSource.addEventListener('markerUpdated', function (event) {
+            try {
+                const marker = JSON.parse(event.data);
+                invokeDotNetSafe('OnMarkerUpdated', marker);
+            } catch (e) {
+                console.error('[SSE] Error parsing markerUpdated event:', e);
+            }
+        });
+
+        // Game marker deleted event
+        eventSource.addEventListener('markerDeleted', function (event) {
+            try {
+                const deleteInfo = JSON.parse(event.data);
+                invokeDotNetSafe('OnMarkerDeleted', deleteInfo);
+            } catch (e) {
+                console.error('[SSE] Error parsing markerDeleted event:', e);
+            }
+        });
+
         // Ping created event
         eventSource.addEventListener('pingCreated', function (event) {
             try {

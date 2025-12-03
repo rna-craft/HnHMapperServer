@@ -2634,6 +2634,42 @@ public partial class Map : IAsyncDisposable, IBrowserViewportObserver
         await InvokeAsync(StateHasChanged);
     }
 
+    [JSInvokable]
+    public async Task OnMarkerCreated(MarkerEventModel markerEvent)
+    {
+        if (markerEvent.MapId != MapNavigation.CurrentMapId) return;
+        await RefreshMarkersAsync();
+    }
+
+    [JSInvokable]
+    public async Task OnMarkerUpdated(MarkerEventModel markerEvent)
+    {
+        if (markerEvent.MapId != MapNavigation.CurrentMapId) return;
+        await RefreshMarkersAsync();
+    }
+
+    [JSInvokable]
+    public async Task OnMarkerDeleted(System.Text.Json.JsonElement data)
+    {
+        // Game markers are deleted by GridId + position, refresh all markers
+        await RefreshMarkersAsync();
+    }
+
+    private async Task RefreshMarkersAsync()
+    {
+        try
+        {
+            var markers = await MapData.GetMarkersAsync();
+            MarkerState.SetMarkers(markers);
+            await LoadMarkersForCurrentMapAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing markers");
+        }
+    }
+
     private async Task HandleCreateCustomMarkerFromMenu()
     {
         showMapActionMenu = false;

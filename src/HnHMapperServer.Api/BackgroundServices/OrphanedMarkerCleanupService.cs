@@ -4,20 +4,24 @@ using HnHMapperServer.Services.Interfaces;
 namespace HnHMapperServer.Api.BackgroundServices;
 
 /// <summary>
-/// Background service that periodically cleans up orphaned markers (markers with missing grids).
+/// Background service that periodically cleans up orphaned markers (markers with missing grids)
+/// and expired pending markers (markers queued before their grids arrived).
 /// Runs every hour to identify and remove markers that reference non-existent grids.
 /// </summary>
 public class OrphanedMarkerCleanupService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IPendingMarkerService _pendingMarkerService;
     private readonly ILogger<OrphanedMarkerCleanupService> _logger;
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromHours(1);
 
     public OrphanedMarkerCleanupService(
         IServiceScopeFactory scopeFactory,
+        IPendingMarkerService pendingMarkerService,
         ILogger<OrphanedMarkerCleanupService> logger)
     {
         _scopeFactory = scopeFactory;
+        _pendingMarkerService = pendingMarkerService;
         _logger = logger;
     }
 
@@ -37,6 +41,13 @@ public class OrphanedMarkerCleanupService : BackgroundService
             {
                 _logger.LogInformation("Orphaned marker cleanup job started");
 
+                // Cleanup expired pending markers (markers waiting for grids that never arrived)
+                var expiredPending = _pendingMarkerService.CleanupExpiredPendingMarkers();
+                if (expiredPending > 0)
+                {
+                    _logger.LogInformation("Cleaned up {Count} expired pending markers", expiredPending);
+                }
+
                 using var scope = _scopeFactory.CreateScope();
                 var markerService = scope.ServiceProvider.GetRequiredService<IMarkerService>();
                 var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
@@ -53,15 +64,15 @@ public class OrphanedMarkerCleanupService : BackgroundService
                 }
 
                 sw.Stop();
-                if (totalDeleted > 0)
+                if (totalDeleted > 0 || expiredPending > 0)
                 {
                     _logger.LogInformation(
-                        "Orphaned marker cleanup job completed in {ElapsedMs}ms. Deleted {TotalDeleted} orphaned markers across all tenants",
-                        sw.ElapsedMilliseconds, totalDeleted);
+                        "Marker cleanup job completed in {ElapsedMs}ms. Deleted {OrphanedCount} orphaned + {ExpiredCount} expired pending markers",
+                        sw.ElapsedMilliseconds, totalDeleted, expiredPending);
                 }
                 else
                 {
-                    _logger.LogDebug("Orphaned marker cleanup job completed in {ElapsedMs}ms. No orphaned markers found",
+                    _logger.LogDebug("Marker cleanup job completed in {ElapsedMs}ms. No orphaned markers found",
                         sw.ElapsedMilliseconds);
                 }
 

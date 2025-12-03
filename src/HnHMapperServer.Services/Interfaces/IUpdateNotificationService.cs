@@ -225,4 +225,34 @@ public interface IUpdateNotificationService
     /// Notifies all subscribers of a timer deletion
     /// </summary>
     void NotifyTimerDeleted(int timerId);
+
+    /// <summary>
+    /// Subscribes to game marker creation notifications
+    /// </summary>
+    ChannelReader<MarkerEventDto> SubscribeToMarkerCreated();
+
+    /// <summary>
+    /// Subscribes to game marker update notifications
+    /// </summary>
+    ChannelReader<MarkerEventDto> SubscribeToMarkerUpdated();
+
+    /// <summary>
+    /// Subscribes to game marker deletion notifications
+    /// </summary>
+    ChannelReader<MarkerDeleteEventDto> SubscribeToMarkerDeleted();
+
+    /// <summary>
+    /// Notifies all subscribers of a game marker creation
+    /// </summary>
+    void NotifyMarkerCreated(MarkerEventDto marker);
+
+    /// <summary>
+    /// Notifies all subscribers of a game marker update
+    /// </summary>
+    void NotifyMarkerUpdated(MarkerEventDto marker);
+
+    /// <summary>
+    /// Notifies all subscribers of a game marker deletion
+    /// </summary>
+    void NotifyMarkerDeleted(MarkerDeleteEventDto deleteEvent);
 }

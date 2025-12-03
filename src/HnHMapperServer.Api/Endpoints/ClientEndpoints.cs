@@ -587,10 +587,14 @@ public static partial class ClientEndpoints
         ApplicationDbContext db,
         ITokenService tokenService,
         IMarkerService markerService,
+        IGridRepository gridRepository,
+        IUpdateNotificationService updateNotificationService,
         ILogger<Program> logger)
     {
         if (!await ClientTokenHelpers.HasUploadAsync(context, db, tokenService, token, logger))
             return Results.Unauthorized();
+
+        var tenantId = context.Items["TenantId"] as string ?? string.Empty;
 
         // Read raw JSON with case-insensitive options (Go client sends lowercase keys)
         var markers = await context.Request.ReadFromJsonAsync<List<Dictionary<string, object>>>(new JsonSerializerOptions
@@ -621,6 +625,30 @@ public static partial class ClientEndpoints
         )).ToList();
 
         await markerService.BulkUploadMarkersAsync(markerList);
+
+        // Broadcast SSE events for each marker
+        foreach (var m in markerList)
+        {
+            var grid = await gridRepository.GetGridAsync(m.GridId);
+            if (grid != null)
+            {
+                updateNotificationService.NotifyMarkerCreated(new MarkerEventDto
+                {
+                    MapId = grid.Map,
+                    GridId = m.GridId,
+                    X = m.X,
+                    Y = m.Y,
+                    Name = m.Name,
+                    Image = string.IsNullOrEmpty(m.Image) ? "gfx/terobjs/mm/custom" : m.Image,
+                    Hidden = false,
+                    Ready = false,
+                    MaxReady = -1,
+                    MinReady = -1,
+                    TenantId = tenantId
+                });
+            }
+        }
+
         return Results.Ok();
     }
 
@@ -630,10 +658,13 @@ public static partial class ClientEndpoints
         ApplicationDbContext db,
         ITokenService tokenService,
         IMarkerService markerService,
+        IUpdateNotificationService updateNotificationService,
         ILogger<Program> logger)
     {
         if (!await ClientTokenHelpers.HasUploadAsync(context, db, tokenService, token, logger))
             return Results.Unauthorized();
+
+        var tenantId = context.Items["TenantId"] as string ?? string.Empty;
 
         // Read raw JSON with case-insensitive options (Go client sends lowercase keys)
         var markers = await context.Request.ReadFromJsonAsync<List<Dictionary<string, object>>>(new JsonSerializerOptions
@@ -662,6 +693,19 @@ public static partial class ClientEndpoints
         )).ToList();
 
         await markerService.DeleteMarkersAsync(markerList);
+
+        // Broadcast SSE delete events
+        foreach (var m in markerList)
+        {
+            updateNotificationService.NotifyMarkerDeleted(new MarkerDeleteEventDto
+            {
+                GridId = m.GridId,
+                X = m.X,
+                Y = m.Y,
+                TenantId = tenantId
+            });
+        }
+
         return Results.Ok();
     }
 
@@ -671,10 +715,14 @@ public static partial class ClientEndpoints
         ApplicationDbContext db,
         ITokenService tokenService,
         IMarkerService markerService,
+        IGridRepository gridRepository,
+        IUpdateNotificationService updateNotificationService,
         ILogger<Program> logger)
     {
         if (!await ClientTokenHelpers.HasUploadAsync(context, db, tokenService, token, logger))
             return Results.Unauthorized();
+
+        var tenantId = context.Items["TenantId"] as string ?? string.Empty;
 
         // Read raw JSON with case-insensitive options (Go client sends lowercase keys)
         var markers = await context.Request.ReadFromJsonAsync<List<Dictionary<string, object>>>(new JsonSerializerOptions
@@ -713,6 +761,26 @@ public static partial class ClientEndpoints
                 gridId, x, y, name, image, ready);
 
             await markerService.UpdateMarkerAsync(gridId, x, y, name, image, ready);
+
+            // Broadcast SSE update event
+            var grid = await gridRepository.GetGridAsync(gridId);
+            if (grid != null)
+            {
+                updateNotificationService.NotifyMarkerUpdated(new MarkerEventDto
+                {
+                    MapId = grid.Map,
+                    GridId = gridId,
+                    X = x,
+                    Y = y,
+                    Name = name,
+                    Image = string.IsNullOrEmpty(image) ? "gfx/terobjs/mm/custom" : image,
+                    Hidden = false,
+                    Ready = ready,
+                    MaxReady = -1,
+                    MinReady = -1,
+                    TenantId = tenantId
+                });
+            }
         }
 
         return Results.Ok();
@@ -724,10 +792,15 @@ public static partial class ClientEndpoints
         ApplicationDbContext db,
         ITokenService tokenService,
         IMarkerService markerService,
+        IMarkerRepository markerRepository,
+        IGridRepository gridRepository,
+        IUpdateNotificationService updateNotificationService,
         ILogger<Program> logger)
     {
         if (!await ClientTokenHelpers.HasUploadAsync(context, db, tokenService, token, logger))
             return Results.Unauthorized();
+
+        var tenantId = context.Items["TenantId"] as string ?? string.Empty;
 
         // Read raw JSON with case-insensitive options (Go client sends lowercase keys)
         var markers = await context.Request.ReadFromJsonAsync<List<Dictionary<string, object>>>(new JsonSerializerOptions
@@ -759,6 +832,29 @@ public static partial class ClientEndpoints
             var minReady = Convert.ToInt64(GetValue(m, "MinReady")?.ToString() ?? "-1");
 
             await markerService.UpdateMarkerReadyTimeAsync(gridId, x, y, maxReady, minReady);
+
+            // Broadcast SSE update event with updated ready times
+            var key = $"{gridId}_{x}_{y}";
+            var marker = await markerRepository.GetMarkerByKeyAsync(key);
+            var grid = await gridRepository.GetGridAsync(gridId);
+            if (marker != null && grid != null)
+            {
+                updateNotificationService.NotifyMarkerUpdated(new MarkerEventDto
+                {
+                    Id = marker.Id,
+                    MapId = grid.Map,
+                    GridId = gridId,
+                    X = x,
+                    Y = y,
+                    Name = marker.Name,
+                    Image = marker.Image,
+                    Hidden = marker.Hidden,
+                    Ready = marker.Ready,
+                    MaxReady = marker.MaxReady,
+                    MinReady = marker.MinReady,
+                    TenantId = tenantId
+                });
+            }
         }
 
         return Results.Ok();
