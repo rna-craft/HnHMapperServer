@@ -61,7 +61,3 @@ HnHMapperServer/
 - [CLAUDE.md](CLAUDE.md) - Technical documentation
 - [deploy/](deploy/) - Deployment guides and Docker configuration
 - [deploy/SECURITY.md](deploy/SECURITY.md) - Security configuration
-
-## License
-
-Compatible with the original HnH Auto-Mapper Server license.
