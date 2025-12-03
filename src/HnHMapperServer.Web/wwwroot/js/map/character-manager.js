@@ -53,7 +53,8 @@ export function addCharacter(characterData, mapInstance) {
     const marker = L.marker(position, {
         icon: icon,
         riseOnHover: true,
-        rotationAngle: characterData.rotation
+        rotationAngle: characterData.rotation,
+        zIndexOffset: 5000  // Always render above other markers (pings use 10000)
     });
 
     const color = getCharacterColor(characterData.type);

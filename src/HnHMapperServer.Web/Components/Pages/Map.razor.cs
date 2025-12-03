@@ -1554,6 +1554,7 @@ public partial class Map : IAsyncDisposable, IBrowserViewportObserver
                             MapNavigation.ChangeMap(followed.Map);
                             state.CurrentMapId = followed.Map;
                             await mapView.ChangeMapAsync(followed.Map);
+                            await RebuildMarkersForCurrentMap();
                         }
 
                         await mapView.JumpToCharacterAsync(followed.Id);
