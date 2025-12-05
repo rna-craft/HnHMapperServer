@@ -26,6 +26,7 @@ public static class IdentityEndpoints
 		group.MapPost("/register", Register).DisableAntiforgery();
 		group.MapPost("/select-tenant", SelectTenant).RequireAuthorization().DisableAntiforgery();
 		group.MapGet("/me", Me).DisableAntiforgery();
+		group.MapGet("/tenants", GetUserTenants).RequireAuthorization().DisableAntiforgery();
 
 		// User self-service token endpoints
 		app.MapGet("/api/user/tokens", GetOwnTokens)
@@ -218,6 +219,49 @@ public static class IdentityEndpoints
 		var roles = user.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToArray();
 		var auths = user.Claims.Where(c => c.Type == "auth").Select(c => c.Value).ToArray();
 		return Results.Ok(new { authenticated = true, username, roles, auths });
+	}
+
+	/// <summary>
+	/// GET /api/auth/tenants - Get all tenants the current user belongs to
+	/// </summary>
+	private static async Task<IResult> GetUserTenants(
+		ClaimsPrincipal user,
+		UserManager<IdentityUser> userManager,
+		ApplicationDbContext db)
+	{
+		var userName = user.Identity?.Name;
+		if (string.IsNullOrEmpty(userName))
+			return Results.Unauthorized();
+
+		var identityUser = await userManager.FindByNameAsync(userName);
+		if (identityUser == null)
+			return Results.Unauthorized();
+
+		// Get all tenants user belongs to (approved only)
+		var tenantUsers = await db.TenantUsers
+			.IgnoreQueryFilters()
+			.Where(tu => tu.UserId == identityUser.Id && tu.JoinedAt != default)
+			.ToListAsync();
+
+		var tenants = new List<object>();
+		foreach (var tenantUser in tenantUsers)
+		{
+			var tenant = await db.Tenants
+				.IgnoreQueryFilters()
+				.FirstOrDefaultAsync(t => t.Id == tenantUser.TenantId);
+
+			if (tenant == null || !tenant.IsActive)
+				continue;
+
+			tenants.Add(new
+			{
+				tenantId = tenant.Id,
+				tenantName = tenant.Name,
+				role = tenantUser.Role.ToClaimValue()
+			});
+		}
+
+		return Results.Ok(tenants);
 	}
 
 	private static async Task<IResult> SelectTenant(

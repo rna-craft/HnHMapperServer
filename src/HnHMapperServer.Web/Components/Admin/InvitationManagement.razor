@@ -246,7 +246,7 @@
         {
             try
             {
-                var success = await InvitationService.RevokeInvitationAsync(invitation.Id);
+                var success = await InvitationService.RevokeInvitationAsync(_currentTenantId!, invitation.Id);
                 if (success)
                 {
                     Snackbar.Add("Invitation revoked successfully.", Severity.Success);

@@ -35,6 +35,11 @@ public interface IHmapImportService
         IEnumerable<string> gridIds,
         string tenantId,
         string gridStorage);
+
+    /// <summary>
+    /// Checks if an import is currently in progress (globally across all tenants)
+    /// </summary>
+    bool IsImportInProgress();
 }
 
 /// <summary>
@@ -63,6 +68,15 @@ public class HmapImportResult
 
     /// <summary>Number of new maps created</summary>
     public int MapsCreated { get; set; }
+
+    /// <summary>Number of segments imported as new maps due to being caves (same coords, different content)</summary>
+    public int CavesAsNewMaps { get; set; }
+
+    /// <summary>Number of segments imported as new maps due to not being spatially proximate to existing data</summary>
+    public int NotProximateAsNewMaps { get; set; }
+
+    /// <summary>Number of grids merged into existing maps (vs added to new maps)</summary>
+    public int GridsMerged { get; set; }
 
     /// <summary>Number of grids imported</summary>
     public int GridsImported { get; set; }
@@ -104,4 +118,11 @@ public class HmapImportProgress
     public int CurrentItem { get; set; }
     public int TotalItems { get; set; }
     public string CurrentItemName { get; set; } = "";
+
+    // Enhanced progress info for better UX
+    public int PhaseNumber { get; set; }
+    public int TotalPhases { get; set; }
+    public double OverallPercent { get; set; }
+    public double ElapsedSeconds { get; set; }
+    public double ItemsPerSecond { get; set; }
 }

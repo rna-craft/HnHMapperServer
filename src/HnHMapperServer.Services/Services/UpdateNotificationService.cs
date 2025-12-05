@@ -19,6 +19,10 @@ public class UpdateNotificationService : IUpdateNotificationService
     private readonly ConcurrentBag<Channel<CharacterDeltaDto>> _characterDeltaChannels = new();
     private readonly ConcurrentBag<Channel<PingEventDto>> _pingCreatedChannels = new();
     private readonly ConcurrentBag<Channel<PingDeleteEventDto>> _pingDeletedChannels = new();
+    private readonly ConcurrentBag<Channel<RoadEventDto>> _roadCreatedChannels = new();
+    private readonly ConcurrentBag<Channel<RoadEventDto>> _roadUpdatedChannels = new();
+    private readonly ConcurrentBag<Channel<RoadDeleteEventDto>> _roadDeletedChannels = new();
+    private readonly ConcurrentBag<Channel<OverlayEventDto>> _overlayUpdatedChannels = new();
     private readonly ConcurrentBag<Channel<NotificationEventDto>> _notificationCreatedChannels = new();
     private readonly ConcurrentBag<Channel<int>> _notificationReadChannels = new();
     private readonly ConcurrentBag<Channel<int>> _notificationDismissedChannels = new();
@@ -26,6 +30,9 @@ public class UpdateNotificationService : IUpdateNotificationService
     private readonly ConcurrentBag<Channel<TimerEventDto>> _timerUpdatedChannels = new();
     private readonly ConcurrentBag<Channel<TimerEventDto>> _timerCompletedChannels = new();
     private readonly ConcurrentBag<Channel<int>> _timerDeletedChannels = new();
+    private readonly ConcurrentBag<Channel<MarkerEventDto>> _markerCreatedChannels = new();
+    private readonly ConcurrentBag<Channel<MarkerEventDto>> _markerUpdatedChannels = new();
+    private readonly ConcurrentBag<Channel<MarkerDeleteEventDto>> _markerDeletedChannels = new();
 
     public ChannelReader<TileData> SubscribeToTileUpdates()
     {
@@ -396,6 +403,128 @@ public class UpdateNotificationService : IUpdateNotificationService
         }
     }
 
+    // Road events
+    public ChannelReader<RoadEventDto> SubscribeToRoadCreated()
+    {
+        var channel = Channel.CreateUnbounded<RoadEventDto>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        _roadCreatedChannels.Add(channel);
+        return channel.Reader;
+    }
+
+    public ChannelReader<RoadEventDto> SubscribeToRoadUpdated()
+    {
+        var channel = Channel.CreateUnbounded<RoadEventDto>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        _roadUpdatedChannels.Add(channel);
+        return channel.Reader;
+    }
+
+    public ChannelReader<RoadDeleteEventDto> SubscribeToRoadDeleted()
+    {
+        var channel = Channel.CreateUnbounded<RoadDeleteEventDto>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        _roadDeletedChannels.Add(channel);
+        return channel.Reader;
+    }
+
+    public void NotifyRoadCreated(RoadEventDto road)
+    {
+        var channelsToRemove = new ConcurrentBag<Channel<RoadEventDto>>();
+
+        foreach (var channel in _roadCreatedChannels)
+        {
+            if (!channel.Writer.TryWrite(road))
+            {
+                channelsToRemove.Add(channel);
+            }
+        }
+
+        foreach (var deadChannel in channelsToRemove)
+        {
+            deadChannel.Writer.TryComplete();
+        }
+    }
+
+    public void NotifyRoadUpdated(RoadEventDto road)
+    {
+        var channelsToRemove = new ConcurrentBag<Channel<RoadEventDto>>();
+
+        foreach (var channel in _roadUpdatedChannels)
+        {
+            if (!channel.Writer.TryWrite(road))
+            {
+                channelsToRemove.Add(channel);
+            }
+        }
+
+        foreach (var deadChannel in channelsToRemove)
+        {
+            deadChannel.Writer.TryComplete();
+        }
+    }
+
+    public void NotifyRoadDeleted(RoadDeleteEventDto deleteEvent)
+    {
+        var channelsToRemove = new ConcurrentBag<Channel<RoadDeleteEventDto>>();
+
+        foreach (var channel in _roadDeletedChannels)
+        {
+            if (!channel.Writer.TryWrite(deleteEvent))
+            {
+                channelsToRemove.Add(channel);
+            }
+        }
+
+        foreach (var deadChannel in channelsToRemove)
+        {
+            deadChannel.Writer.TryComplete();
+        }
+    }
+
+    // Overlay events
+    public ChannelReader<OverlayEventDto> SubscribeToOverlayUpdated()
+    {
+        var channel = Channel.CreateUnbounded<OverlayEventDto>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        _overlayUpdatedChannels.Add(channel);
+        return channel.Reader;
+    }
+
+    public void NotifyOverlayUpdated(OverlayEventDto overlay)
+    {
+        var channelsToRemove = new ConcurrentBag<Channel<OverlayEventDto>>();
+
+        foreach (var channel in _overlayUpdatedChannels)
+        {
+            if (!channel.Writer.TryWrite(overlay))
+            {
+                channelsToRemove.Add(channel);
+            }
+        }
+
+        foreach (var deadChannel in channelsToRemove)
+        {
+            deadChannel.Writer.TryComplete();
+        }
+    }
+
     // Notification events
     public ChannelReader<NotificationEventDto> SubscribeToNotificationCreated()
     {
@@ -597,6 +726,97 @@ public class UpdateNotificationService : IUpdateNotificationService
         foreach (var channel in _timerDeletedChannels)
         {
             if (!channel.Writer.TryWrite(timerId))
+            {
+                channelsToRemove.Add(channel);
+            }
+        }
+
+        foreach (var deadChannel in channelsToRemove)
+        {
+            deadChannel.Writer.TryComplete();
+        }
+    }
+
+    // Game marker events
+    public ChannelReader<MarkerEventDto> SubscribeToMarkerCreated()
+    {
+        var channel = Channel.CreateUnbounded<MarkerEventDto>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        _markerCreatedChannels.Add(channel);
+        return channel.Reader;
+    }
+
+    public ChannelReader<MarkerEventDto> SubscribeToMarkerUpdated()
+    {
+        var channel = Channel.CreateUnbounded<MarkerEventDto>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        _markerUpdatedChannels.Add(channel);
+        return channel.Reader;
+    }
+
+    public ChannelReader<MarkerDeleteEventDto> SubscribeToMarkerDeleted()
+    {
+        var channel = Channel.CreateUnbounded<MarkerDeleteEventDto>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        _markerDeletedChannels.Add(channel);
+        return channel.Reader;
+    }
+
+    public void NotifyMarkerCreated(MarkerEventDto marker)
+    {
+        var channelsToRemove = new ConcurrentBag<Channel<MarkerEventDto>>();
+
+        foreach (var channel in _markerCreatedChannels)
+        {
+            if (!channel.Writer.TryWrite(marker))
+            {
+                channelsToRemove.Add(channel);
+            }
+        }
+
+        foreach (var deadChannel in channelsToRemove)
+        {
+            deadChannel.Writer.TryComplete();
+        }
+    }
+
+    public void NotifyMarkerUpdated(MarkerEventDto marker)
+    {
+        var channelsToRemove = new ConcurrentBag<Channel<MarkerEventDto>>();
+
+        foreach (var channel in _markerUpdatedChannels)
+        {
+            if (!channel.Writer.TryWrite(marker))
+            {
+                channelsToRemove.Add(channel);
+            }
+        }
+
+        foreach (var deadChannel in channelsToRemove)
+        {
+            deadChannel.Writer.TryComplete();
+        }
+    }
+
+    public void NotifyMarkerDeleted(MarkerDeleteEventDto deleteEvent)
+    {
+        var channelsToRemove = new ConcurrentBag<Channel<MarkerDeleteEventDto>>();
+
+        foreach (var channel in _markerDeletedChannels)
+        {
+            if (!channel.Writer.TryWrite(deleteEvent))
             {
                 channelsToRemove.Add(channel);
             }

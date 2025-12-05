@@ -89,7 +89,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -141,7 +141,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 logger.LogWarning("Access denied: User tenant {CurrentTenant} doesn't match requested {TenantId}", currentTenantId, tenantId);
@@ -352,7 +352,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -437,7 +437,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -533,7 +533,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -582,7 +582,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -708,7 +708,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -769,7 +769,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -819,7 +819,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -866,7 +866,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -928,7 +928,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -972,7 +972,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -1008,7 +1008,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 context.Response.StatusCode = 403;
@@ -1092,17 +1092,22 @@ public static class TenantAdminEndpoints
         var clientDisconnected = false;
 
         // Helper to send SSE events (ignores errors if client disconnected)
-        async Task SendProgressEvent(string phase, int current, int total, string? itemName = null)
+        async Task SendProgressEvent(HmapImportProgress p)
         {
             if (clientDisconnected) return;
             try
             {
                 var data = System.Text.Json.JsonSerializer.Serialize(new
                 {
-                    phase,
-                    current,
-                    total,
-                    itemName = itemName ?? ""
+                    phase = p.Phase,
+                    current = p.CurrentItem,
+                    total = p.TotalItems,
+                    itemName = p.CurrentItemName ?? "",
+                    phaseNumber = p.PhaseNumber,
+                    totalPhases = p.TotalPhases,
+                    overallPercent = p.OverallPercent,
+                    elapsedSeconds = p.ElapsedSeconds,
+                    itemsPerSecond = p.ItemsPerSecond
                 });
                 var bytes = System.Text.Encoding.UTF8.GetBytes($"event: progress\ndata: {data}\n\n");
                 await writer.WriteAsync(bytes);
@@ -1137,7 +1142,7 @@ public static class TenantAdminEndpoints
             // Create progress reporter that sends SSE events (continues even if client gone)
             var progress = new Progress<HmapImportProgress>(async p =>
             {
-                await SendProgressEvent(p.Phase, p.CurrentItem, p.TotalItems, p.CurrentItemName);
+                await SendProgressEvent(p);
             });
 
             // Open file from disk - import continues regardless of client connection
@@ -1153,7 +1158,16 @@ public static class TenantAdminEndpoints
                 // Clean up any partially created data
                 if (importResult.CreatedMapIds.Count > 0 || importResult.CreatedGridIds.Count > 0)
                 {
-                    await SendProgressEvent("Cleaning up", 0, 1, "Rolling back changes...");
+                    await SendProgressEvent(new HmapImportProgress
+                    {
+                        Phase = "Cleaning up",
+                        CurrentItem = 0,
+                        TotalItems = 1,
+                        CurrentItemName = "Rolling back changes...",
+                        PhaseNumber = 6,
+                        TotalPhases = 6,
+                        OverallPercent = 100
+                    });
                     await importService.CleanupFailedImportAsync(
                         importResult.CreatedMapIds,
                         importResult.CreatedGridIds,

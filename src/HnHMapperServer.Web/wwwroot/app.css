@@ -207,6 +207,7 @@ body::before {
 /* Global Tab Panel Glassmorphism - Multiple selectors */
 .mud-tabs-panels {
     background-color: transparent !important;
+    padding: 0 !important;
 }
 
 .mud-tabs-toolbar,
