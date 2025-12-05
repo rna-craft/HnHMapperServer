@@ -22,6 +22,22 @@ public static class SuperadminEndpoints
         var group = app.MapGroup("/api/superadmin")
             .RequireAuthorization("SuperadminOnly");
 
+        // === SuperAdmin Role Management ===
+
+        // GET /api/superadmin/superadmins - List all users with SuperAdmin role
+        group.MapGet("/superadmins", GetAllSuperAdmins);
+
+        // POST /api/superadmin/users/{userId}/grant-superadmin - Grant SuperAdmin role
+        group.MapPost("/users/{userId}/grant-superadmin", GrantSuperAdmin);
+
+        // POST /api/superadmin/users/{userId}/revoke-superadmin - Revoke SuperAdmin role
+        group.MapPost("/users/{userId}/revoke-superadmin", RevokeSuperAdmin);
+
+        // GET /api/superadmin/users - List all users (for granting SuperAdmin)
+        group.MapGet("/users", GetAllUsers);
+
+        // === Tenant Management ===
+
         // GET /api/superadmin/tenants - List all tenants
         group.MapGet("/tenants", GetAllTenants);
 
@@ -857,6 +873,201 @@ public static class SuperadminEndpoints
     }
 
     // ===========================
+    // SuperAdmin Role Management Endpoints
+    // ===========================
+
+    /// <summary>
+    /// GET /api/superadmin/superadmins
+    /// Lists all users with the SuperAdmin role
+    /// </summary>
+    private static async Task<IResult> GetAllSuperAdmins(
+        UserManager<IdentityUser> userManager,
+        ILogger<Program> logger)
+    {
+        try
+        {
+            var superAdmins = await userManager.GetUsersInRoleAsync("SuperAdmin");
+
+            var result = superAdmins.Select(u => new SuperAdminDto(
+                u.Id,
+                u.UserName ?? string.Empty,
+                u.Email
+            )).ToList();
+
+            logger.LogInformation("SuperAdmin: Loaded {Count} superadmins", result.Count);
+            return Results.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error loading superadmins");
+            return Results.Problem("Failed to load superadmins");
+        }
+    }
+
+    /// <summary>
+    /// POST /api/superadmin/users/{userId}/grant-superadmin
+    /// Grants the SuperAdmin role to a user
+    /// </summary>
+    private static async Task<IResult> GrantSuperAdmin(
+        string userId,
+        UserManager<IdentityUser> userManager,
+        IAuditService auditService,
+        HttpContext context,
+        ILogger<Program> logger)
+    {
+        try
+        {
+            // Find the user
+            var user = await userManager.FindByIdAsync(userId);
+            if (user == null)
+            {
+                return Results.NotFound(new { error = "User not found" });
+            }
+
+            // Check if already SuperAdmin
+            if (await userManager.IsInRoleAsync(user, "SuperAdmin"))
+            {
+                return Results.BadRequest(new { error = "User is already a SuperAdmin" });
+            }
+
+            // Grant SuperAdmin role
+            var result = await userManager.AddToRoleAsync(user, "SuperAdmin");
+            if (!result.Succeeded)
+            {
+                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                logger.LogWarning("Failed to grant SuperAdmin to user {UserId}: {Errors}", userId, errors);
+                return Results.BadRequest(new { error = "Failed to grant SuperAdmin role", details = errors });
+            }
+
+            // Log audit entry
+            var adminUsername = context.User.Identity?.Name ?? "Unknown";
+            var adminUserId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            await auditService.LogAsync(new AuditEntry
+            {
+                TenantId = null, // Global action
+                UserId = adminUserId,
+                Action = "SuperAdminGranted",
+                EntityType = "User",
+                EntityId = userId,
+                OldValue = null,
+                NewValue = $"SuperAdmin role granted to {user.UserName} by {adminUsername}"
+            });
+
+            logger.LogWarning("SuperAdmin {AdminUsername} granted SuperAdmin role to user {UserId} ({Username})",
+                adminUsername, userId, user.UserName);
+
+            return Results.Ok(new { message = $"SuperAdmin role granted to {user.UserName}" });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error granting SuperAdmin role to user {UserId}", userId);
+            return Results.Problem("Failed to grant SuperAdmin role");
+        }
+    }
+
+    /// <summary>
+    /// POST /api/superadmin/users/{userId}/revoke-superadmin
+    /// Revokes the SuperAdmin role from a user
+    /// </summary>
+    private static async Task<IResult> RevokeSuperAdmin(
+        string userId,
+        UserManager<IdentityUser> userManager,
+        IAuditService auditService,
+        HttpContext context,
+        ILogger<Program> logger)
+    {
+        try
+        {
+            // Find the user
+            var user = await userManager.FindByIdAsync(userId);
+            if (user == null)
+            {
+                return Results.NotFound(new { error = "User not found" });
+            }
+
+            // Check if user is SuperAdmin
+            if (!await userManager.IsInRoleAsync(user, "SuperAdmin"))
+            {
+                return Results.BadRequest(new { error = "User is not a SuperAdmin" });
+            }
+
+            // Safety: Cannot revoke own SuperAdmin role
+            var currentUserId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userId == currentUserId)
+            {
+                return Results.BadRequest(new { error = "Cannot revoke your own SuperAdmin role" });
+            }
+
+            // Safety: Must leave at least one SuperAdmin
+            var allSuperAdmins = await userManager.GetUsersInRoleAsync("SuperAdmin");
+            if (allSuperAdmins.Count <= 1)
+            {
+                return Results.BadRequest(new { error = "Cannot revoke the last SuperAdmin. At least one SuperAdmin must remain." });
+            }
+
+            // Revoke SuperAdmin role
+            var result = await userManager.RemoveFromRoleAsync(user, "SuperAdmin");
+            if (!result.Succeeded)
+            {
+                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                logger.LogWarning("Failed to revoke SuperAdmin from user {UserId}: {Errors}", userId, errors);
+                return Results.BadRequest(new { error = "Failed to revoke SuperAdmin role", details = errors });
+            }
+
+            // Log audit entry
+            var adminUsername = context.User.Identity?.Name ?? "Unknown";
+            await auditService.LogAsync(new AuditEntry
+            {
+                TenantId = null, // Global action
+                UserId = currentUserId,
+                Action = "SuperAdminRevoked",
+                EntityType = "User",
+                EntityId = userId,
+                OldValue = $"User {user.UserName} was SuperAdmin",
+                NewValue = $"SuperAdmin role revoked by {adminUsername}"
+            });
+
+            logger.LogWarning("SuperAdmin {AdminUsername} revoked SuperAdmin role from user {UserId} ({Username})",
+                adminUsername, userId, user.UserName);
+
+            return Results.Ok(new { message = $"SuperAdmin role revoked from {user.UserName}" });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error revoking SuperAdmin role from user {UserId}", userId);
+            return Results.Problem("Failed to revoke SuperAdmin role");
+        }
+    }
+
+    /// <summary>
+    /// GET /api/superadmin/users
+    /// Lists all users in the system (for SuperAdmin role management)
+    /// </summary>
+    private static async Task<IResult> GetAllUsers(
+        UserManager<IdentityUser> userManager,
+        ILogger<Program> logger)
+    {
+        try
+        {
+            var users = await userManager.Users.ToListAsync();
+
+            var result = users.Select(u => new UserDto(
+                u.Id,
+                u.UserName ?? string.Empty,
+                u.Email
+            )).OrderBy(u => u.Username).ToList();
+
+            logger.LogInformation("SuperAdmin: Loaded {Count} users", result.Count);
+            return Results.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error loading users");
+            return Results.Problem("Failed to load users");
+        }
+    }
+
+    // ===========================
     // Map & Marker Monitoring Endpoints
     // ===========================
 
@@ -1615,6 +1826,16 @@ public static class SuperadminEndpoints
         }
     }
 }
+
+/// <summary>
+/// DTO for SuperAdmin user information
+/// </summary>
+public record SuperAdminDto(string UserId, string Username, string? Email);
+
+/// <summary>
+/// DTO for basic user information
+/// </summary>
+public record UserDto(string UserId, string Username, string? Email);
 
 /// <summary>
 /// DTO for updating a configuration value

@@ -1,0 +1,212 @@
+@using HnHMapperServer.Web.Components.SuperAdmin
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IHttpClientFactory HttpClientFactory
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<MudPaper Class="pa-4">
+    <MudStack Spacing="3">
+        <MudText Typo="Typo.h5">
+            <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Class="me-2" />
+            SuperAdmin Management
+        </MudText>
+
+        <MudAlert Severity="Severity.Warning" Dense="true">
+            SuperAdmins have full system access across all tenants. Grant this role carefully.
+        </MudAlert>
+
+        @if (_loading)
+        {
+            <div class="d-flex justify-center align-center" style="min-height: 300px;">
+                <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+            </div>
+        }
+        else
+        {
+            <MudTable Items="_superAdmins"
+                      Hover="true"
+                      Breakpoint="Breakpoint.Sm"
+                      Dense="true"
+                      Elevation="0"
+                      Class="mt-2">
+                <HeaderContent>
+                    <MudTh>Username</MudTh>
+                    <MudTh>Email</MudTh>
+                    <MudTh Style="text-align: right;">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Username">
+                        <MudStack Row="true" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Filled.Shield" Size="Size.Small" Color="Color.Warning" Class="me-2" />
+                            <MudText>@context.Username</MudText>
+                            @if (context.UserId == _currentUserId)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="ms-2">You</MudChip>
+                            }
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Email">
+                        <MudText Typo="Typo.body2">@(context.Email ?? "—")</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Actions" Style="text-align: right;">
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Error"
+                                   Size="Size.Small"
+                                   OnClick="@(() => ConfirmRevoke(context))"
+                                   Disabled="@(context.UserId == _currentUserId)"
+                                   StartIcon="@Icons.Material.Filled.RemoveCircle">
+                            Revoke
+                        </MudButton>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            <MudStack Row="true" Spacing="2" Class="mt-4">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           OnClick="OpenGrantDialog"
+                           StartIcon="@Icons.Material.Filled.PersonAdd">
+                    Grant SuperAdmin
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
+                           OnClick="LoadSuperAdmins"
+                           StartIcon="@Icons.Material.Filled.Refresh"
+                           Disabled="@_loading">
+                    Refresh
+                </MudButton>
+            </MudStack>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    private List<SuperAdminDto> _superAdmins = new();
+    private bool _loading = true;
+    private string? _currentUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _currentUserId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        await LoadSuperAdmins();
+    }
+
+    private async Task LoadSuperAdmins()
+    {
+        _loading = true;
+
+        try
+        {
+            var apiClient = HttpClientFactory.CreateClient("API");
+            var response = await apiClient.GetAsync("/api/superadmin/superadmins");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var admins = await response.Content.ReadFromJsonAsync<List<SuperAdminDto>>(
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                _superAdmins = admins ?? new List<SuperAdminDto>();
+            }
+            else
+            {
+                Snackbar.Add($"Failed to load SuperAdmins: {response.StatusCode}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading SuperAdmins: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OpenGrantDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            ["ExistingSuperAdminIds"] = _superAdmins.Select(s => s.UserId).ToList()
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true,
+            CloseButton = true
+        };
+
+        var dialog = await DialogService.ShowAsync<GrantSuperAdminDialog>("Grant SuperAdmin Role", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadSuperAdmins();
+        }
+    }
+
+    private async Task ConfirmRevoke(SuperAdminDto admin)
+    {
+        var parameters = new DialogParameters
+        {
+            ["ContentText"] = $"Are you sure you want to revoke SuperAdmin role from {admin.Username}? They will lose all SuperAdmin privileges but retain any tenant access they have.",
+            ["ButtonText"] = "Revoke",
+            ["Color"] = Color.Error
+        };
+
+        var dialog = await DialogService.ShowAsync<MudMessageBox>("Confirm Revoke SuperAdmin", parameters);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await RevokeSuperAdmin(admin);
+        }
+    }
+
+    private async Task RevokeSuperAdmin(SuperAdminDto admin)
+    {
+        try
+        {
+            var apiClient = HttpClientFactory.CreateClient("API");
+            var response = await apiClient.PostAsync($"/api/superadmin/users/{admin.UserId}/revoke-superadmin", null);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add($"SuperAdmin role revoked from {admin.Username}", Severity.Success);
+                await LoadSuperAdmins();
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                try
+                {
+                    var errorObj = System.Text.Json.JsonSerializer.Deserialize<ErrorResponse>(errorContent,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    Snackbar.Add(errorObj?.Error ?? "Failed to revoke SuperAdmin role", Severity.Error);
+                }
+                catch
+                {
+                    Snackbar.Add($"Failed to revoke SuperAdmin role: {response.StatusCode}", Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private class SuperAdminDto
+    {
+        public string UserId { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string? Email { get; set; }
+    }
+
+    private class ErrorResponse
+    {
+        public string Error { get; set; } = string.Empty;
+    }
+}

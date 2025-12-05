@@ -89,7 +89,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -141,7 +141,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 logger.LogWarning("Access denied: User tenant {CurrentTenant} doesn't match requested {TenantId}", currentTenantId, tenantId);
@@ -352,7 +352,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -437,7 +437,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -533,7 +533,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -582,7 +582,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -708,7 +708,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -769,7 +769,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -819,7 +819,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -866,7 +866,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -928,7 +928,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -972,7 +972,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 return Results.Forbid();
@@ -1008,7 +1008,7 @@ public static class TenantAdminEndpoints
         // Verify user has access to this tenant (unless SuperAdmin)
         if (!context.User.IsInRole(AuthorizationConstants.Roles.SuperAdmin))
         {
-            var currentTenantId = context.User.FindFirst("TenantId")?.Value;
+            var currentTenantId = context.User.FindFirst(AuthorizationConstants.ClaimTypes.TenantId)?.Value;
             if (currentTenantId != tenantId)
             {
                 context.Response.StatusCode = 403;

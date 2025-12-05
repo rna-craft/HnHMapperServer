@@ -30,33 +30,6 @@
                 </MudText>
             </MudPaper>
 
-            @* Tenant Context Header *@
-            @if (_currentTenant != null)
-            {
-                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-4 glass-morphism">
-                    <div class="d-flex justify-space-between align-center">
-                        <div>
-                            <strong>Current Organization:</strong> @_currentTenant.Name
-                            <MudChip T="string" Size="Size.Small" Color="@GetRoleColor(_currentTenant.Role)" Class="ml-2">@_currentTenant.Role</MudChip>
-                        </div>
-                        @if (_userHasMultipleTenants)
-                        {
-                            <MudButton Variant="Variant.Text"
-                                       Color="Color.Primary"
-                                       Size="Size.Small"
-                                       Href="/tenant/select">
-                                Switch Organization
-                            </MudButton>
-                        }
-                    </div>
-                </MudAlert>
-
-                @* Storage Usage Gauge *@
-                <StorageUsageGauge CurrentUsageMB="@_currentTenant.StorageUsageMB"
-                                   QuotaMB="@_currentTenant.StorageQuotaMB" />
-            }
-
-
             <MudGrid>
                 <MudItem xs="12" md="6">
                     <MudPaper Elevation="0" Class="pa-6 glass-morphism">
