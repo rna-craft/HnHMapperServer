@@ -1073,37 +1073,53 @@ public static class SuperadminEndpoints
 
     /// <summary>
     /// GET /api/superadmin/maps
-    /// Lists all maps across all tenants with statistics
+    /// Lists all maps across all tenants with statistics (paginated)
     /// </summary>
     private static async Task<IResult> GetAllMaps(
         ApplicationDbContext db,
-        ILogger<Program> logger)
+        ILogger<Program> logger,
+        int page = 1,
+        int pageSize = 25,
+        string? search = null)
     {
         try
         {
-            var maps = await db.Maps
-                .IgnoreQueryFilters()
-                .OrderByDescending(m => m.CreatedAt)
-                .ToListAsync();
+            if (pageSize > 100) pageSize = 100;
+            if (pageSize < 1) pageSize = 25;
+            if (page < 1) page = 1;
 
-            // Load all tenants
+            // Build base query
+            var query = db.Maps
+                .IgnoreQueryFilters()
+                .AsNoTracking();
+
+            // Apply search filter
+            if (!string.IsNullOrWhiteSpace(search))
+                query = query.Where(m => m.Name.Contains(search));
+
+            // Get total count
+            var totalCount = await query.CountAsync();
+
+            // Load tenants dictionary for lookup
             var tenants = await db.Tenants
                 .IgnoreQueryFilters()
+                .AsNoTracking()
                 .ToDictionaryAsync(t => t.Id, t => t.Name);
 
-            var mapDtos = new List<GlobalMapDto>();
+            // Get paginated maps
+            var maps = await query
+                .OrderByDescending(m => m.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
 
+            // Build DTOs with counts (now only for the page, not all maps)
+            var mapDtos = new List<GlobalMapDto>();
             foreach (var map in maps)
             {
                 var tileCount = await db.Tiles
                     .IgnoreQueryFilters()
                     .CountAsync(t => t.MapId == map.Id);
-
-                var markerCount = await db.Markers
-                    .IgnoreQueryFilters()
-                    .CountAsync(m => db.Grids
-                        .IgnoreQueryFilters()
-                        .Any(g => g.Id == m.GridId && g.Map == map.Id));
 
                 var customMarkerCount = await db.CustomMarkers
                     .IgnoreQueryFilters()
@@ -1119,13 +1135,21 @@ public static class SuperadminEndpoints
                     Priority = map.Priority,
                     CreatedAt = map.CreatedAt,
                     TileCount = tileCount,
-                    MarkerCount = markerCount,
+                    MarkerCount = 0, // Skip expensive marker count
                     CustomMarkerCount = customMarkerCount
                 });
             }
 
-            logger.LogInformation("SuperAdmin: Loaded {Count} maps across all tenants", mapDtos.Count);
-            return Results.Ok(mapDtos);
+            logger.LogInformation("SuperAdmin: Loaded {Count}/{Total} maps (page {Page})", mapDtos.Count, totalCount, page);
+
+            return Results.Ok(new
+            {
+                page,
+                pageSize,
+                totalCount,
+                totalPages = (int)Math.Ceiling(totalCount / (double)pageSize),
+                maps = mapDtos
+            });
         }
         catch (Exception ex)
         {
