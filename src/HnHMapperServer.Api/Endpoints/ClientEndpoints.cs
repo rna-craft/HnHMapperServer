@@ -37,6 +37,11 @@ public static partial class ClientEndpoints
             .DisableAntiforgery()
             .RequireRateLimiting("TileUpload");
 
+        // Overlay upload (same rate limit as gridUpload)
+        group.MapPost("/overlayUpload", OverlayUpload)
+            .DisableAntiforgery()
+            .RequireRateLimiting("TileUpload");
+
         group.MapPost("/positionUpdate", PositionUpdate).DisableAntiforgery();
         group.MapPost("/markerBulkUpload", MarkerBulkUpload).DisableAntiforgery();
         group.MapPost("/markerDelete", MarkerDelete).DisableAntiforgery();
@@ -309,6 +314,139 @@ public static partial class ClientEndpoints
         return Results.Ok();
     }
 
+    /// <summary>
+    /// Upload overlay data for a grid (claims, villages, provinces)
+    /// </summary>
+    private static async Task<IResult> OverlayUpload(
+        [FromRoute] string token,
+        HttpContext context,
+        ApplicationDbContext db,
+        ITokenService tokenService,
+        IGridRepository gridRepository,
+        IOverlayDataRepository overlayRepository,
+        IUpdateNotificationService updateNotificationService,
+        ILogger<Program> logger)
+    {
+        // 1. Validate token
+        if (!await ClientTokenHelpers.HasUploadAsync(context, db, tokenService, token, logger))
+            return Results.Unauthorized();
+
+        var tenantId = context.Items["TenantId"] as string;
+        if (string.IsNullOrEmpty(tenantId))
+        {
+            logger.LogError("OverlayUpload: TenantId not found in context");
+            return Results.Unauthorized();
+        }
+
+        // 2. Parse request
+        var request = await context.Request.ReadFromJsonAsync<OverlayUploadDto>(
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        if (request == null || string.IsNullOrEmpty(request.GridId))
+        {
+            logger.LogWarning("OverlayUpload: Invalid payload - missing gridId");
+            return Results.BadRequest("Invalid overlay upload payload");
+        }
+
+        // 3. Look up grid to get MapId and Coord
+        var grid = await gridRepository.GetGridAsync(request.GridId);
+        if (grid == null)
+        {
+            logger.LogWarning("OverlayUpload: Unknown grid id {GridId}", request.GridId);
+            return Results.BadRequest($"Unknown grid id: {request.GridId}");
+        }
+
+        // 4. Convert and save overlays
+        var overlays = new List<OverlayData>();
+        foreach (var item in request.Overlays)
+        {
+            var overlayType = ParseOverlayType(item.ResourceName);
+            if (overlayType == null)
+            {
+                logger.LogDebug("OverlayUpload: Skipping unknown overlay type from resource {ResourceName}", item.ResourceName);
+                continue;
+            }
+
+            overlays.Add(new OverlayData
+            {
+                MapId = grid.Map,
+                Coord = grid.Coord,
+                OverlayType = overlayType,
+                Data = TilesToBitpack(item.Tiles),
+                TenantId = tenantId,
+                UpdatedAt = DateTime.UtcNow
+            });
+        }
+
+        if (overlays.Count > 0)
+        {
+            await overlayRepository.UpsertBatchAsync(overlays);
+
+            logger.LogDebug("OverlayUpload: Saved {Count} overlays for grid {GridId} on map {MapId}",
+                overlays.Count, request.GridId, grid.Map);
+
+            // 5. Notify SSE clients
+            foreach (var overlay in overlays)
+            {
+                updateNotificationService.NotifyOverlayUpdated(new OverlayEventDto
+                {
+                    MapId = overlay.MapId,
+                    CoordX = overlay.Coord.X,
+                    CoordY = overlay.Coord.Y,
+                    OverlayType = overlay.OverlayType,
+                    TenantId = tenantId
+                });
+            }
+        }
+
+        return Results.Ok();
+    }
+
+    /// <summary>
+    /// Convert array of tile indices (0-9999) to bitpacked byte array (1250 bytes)
+    /// </summary>
+    private static byte[] TilesToBitpack(List<int> tiles)
+    {
+        var data = new byte[1250];  // 100*100/8 = 1250 bytes
+        foreach (var tileIndex in tiles)
+        {
+            if (tileIndex < 0 || tileIndex >= 10000) continue;
+            var byteIndex = tileIndex / 8;
+            var bitOffset = tileIndex % 8;
+            data[byteIndex] |= (byte)(1 << bitOffset);
+        }
+        return data;
+    }
+
+    /// <summary>
+    /// Parse overlay type from resource name (e.g., "gfx/tiles/overlay/cplot-f" -> "ClaimFloor")
+    /// </summary>
+    private static string? ParseOverlayType(string resourceName)
+    {
+        if (string.IsNullOrEmpty(resourceName))
+            return null;
+
+        // Normalize path separators and get filename
+        var normalized = resourceName.Replace('\\', '/').ToLowerInvariant();
+        var parts = normalized.Split('/');
+        var filename = parts.Length > 0 ? parts[^1] : normalized;
+
+        return filename switch
+        {
+            "cplot-f" => "ClaimFloor",
+            "cplot-o" => "ClaimOutline",
+            "vlg-f" => "VillageFloor",
+            "vlg-o" => "VillageOutline",
+            "vlg-sar" => "VillageSAR",
+            "0" when parts.Length > 1 && parts[^2] == "prov" => "Province0",
+            "1" when parts.Length > 1 && parts[^2] == "prov" => "Province1",
+            "2" when parts.Length > 1 && parts[^2] == "prov" => "Province2",
+            "3" when parts.Length > 1 && parts[^2] == "prov" => "Province3",
+            "4" when parts.Length > 1 && parts[^2] == "prov" => "Province4",
+            _ => null
+        };
+    }
+
     private static async Task<IResult> PositionUpdate(
         [FromRoute] string token,
         HttpContext context,
@@ -449,10 +587,14 @@ public static partial class ClientEndpoints
         ApplicationDbContext db,
         ITokenService tokenService,
         IMarkerService markerService,
+        IGridRepository gridRepository,
+        IUpdateNotificationService updateNotificationService,
         ILogger<Program> logger)
     {
         if (!await ClientTokenHelpers.HasUploadAsync(context, db, tokenService, token, logger))
             return Results.Unauthorized();
+
+        var tenantId = context.Items["TenantId"] as string ?? string.Empty;
 
         // Read raw JSON with case-insensitive options (Go client sends lowercase keys)
         var markers = await context.Request.ReadFromJsonAsync<List<Dictionary<string, object>>>(new JsonSerializerOptions
@@ -483,6 +625,30 @@ public static partial class ClientEndpoints
         )).ToList();
 
         await markerService.BulkUploadMarkersAsync(markerList);
+
+        // Broadcast SSE events for each marker
+        foreach (var m in markerList)
+        {
+            var grid = await gridRepository.GetGridAsync(m.GridId);
+            if (grid != null)
+            {
+                updateNotificationService.NotifyMarkerCreated(new MarkerEventDto
+                {
+                    MapId = grid.Map,
+                    GridId = m.GridId,
+                    X = m.X,
+                    Y = m.Y,
+                    Name = m.Name,
+                    Image = string.IsNullOrEmpty(m.Image) ? "gfx/terobjs/mm/custom" : m.Image,
+                    Hidden = false,
+                    Ready = false,
+                    MaxReady = -1,
+                    MinReady = -1,
+                    TenantId = tenantId
+                });
+            }
+        }
+
         return Results.Ok();
     }
 
@@ -492,10 +658,13 @@ public static partial class ClientEndpoints
         ApplicationDbContext db,
         ITokenService tokenService,
         IMarkerService markerService,
+        IUpdateNotificationService updateNotificationService,
         ILogger<Program> logger)
     {
         if (!await ClientTokenHelpers.HasUploadAsync(context, db, tokenService, token, logger))
             return Results.Unauthorized();
+
+        var tenantId = context.Items["TenantId"] as string ?? string.Empty;
 
         // Read raw JSON with case-insensitive options (Go client sends lowercase keys)
         var markers = await context.Request.ReadFromJsonAsync<List<Dictionary<string, object>>>(new JsonSerializerOptions
@@ -524,6 +693,19 @@ public static partial class ClientEndpoints
         )).ToList();
 
         await markerService.DeleteMarkersAsync(markerList);
+
+        // Broadcast SSE delete events
+        foreach (var m in markerList)
+        {
+            updateNotificationService.NotifyMarkerDeleted(new MarkerDeleteEventDto
+            {
+                GridId = m.GridId,
+                X = m.X,
+                Y = m.Y,
+                TenantId = tenantId
+            });
+        }
+
         return Results.Ok();
     }
 
@@ -533,10 +715,14 @@ public static partial class ClientEndpoints
         ApplicationDbContext db,
         ITokenService tokenService,
         IMarkerService markerService,
+        IGridRepository gridRepository,
+        IUpdateNotificationService updateNotificationService,
         ILogger<Program> logger)
     {
         if (!await ClientTokenHelpers.HasUploadAsync(context, db, tokenService, token, logger))
             return Results.Unauthorized();
+
+        var tenantId = context.Items["TenantId"] as string ?? string.Empty;
 
         // Read raw JSON with case-insensitive options (Go client sends lowercase keys)
         var markers = await context.Request.ReadFromJsonAsync<List<Dictionary<string, object>>>(new JsonSerializerOptions
@@ -575,6 +761,26 @@ public static partial class ClientEndpoints
                 gridId, x, y, name, image, ready);
 
             await markerService.UpdateMarkerAsync(gridId, x, y, name, image, ready);
+
+            // Broadcast SSE update event
+            var grid = await gridRepository.GetGridAsync(gridId);
+            if (grid != null)
+            {
+                updateNotificationService.NotifyMarkerUpdated(new MarkerEventDto
+                {
+                    MapId = grid.Map,
+                    GridId = gridId,
+                    X = x,
+                    Y = y,
+                    Name = name,
+                    Image = string.IsNullOrEmpty(image) ? "gfx/terobjs/mm/custom" : image,
+                    Hidden = false,
+                    Ready = ready,
+                    MaxReady = -1,
+                    MinReady = -1,
+                    TenantId = tenantId
+                });
+            }
         }
 
         return Results.Ok();
@@ -586,10 +792,15 @@ public static partial class ClientEndpoints
         ApplicationDbContext db,
         ITokenService tokenService,
         IMarkerService markerService,
+        IMarkerRepository markerRepository,
+        IGridRepository gridRepository,
+        IUpdateNotificationService updateNotificationService,
         ILogger<Program> logger)
     {
         if (!await ClientTokenHelpers.HasUploadAsync(context, db, tokenService, token, logger))
             return Results.Unauthorized();
+
+        var tenantId = context.Items["TenantId"] as string ?? string.Empty;
 
         // Read raw JSON with case-insensitive options (Go client sends lowercase keys)
         var markers = await context.Request.ReadFromJsonAsync<List<Dictionary<string, object>>>(new JsonSerializerOptions
@@ -621,6 +832,29 @@ public static partial class ClientEndpoints
             var minReady = Convert.ToInt64(GetValue(m, "MinReady")?.ToString() ?? "-1");
 
             await markerService.UpdateMarkerReadyTimeAsync(gridId, x, y, maxReady, minReady);
+
+            // Broadcast SSE update event with updated ready times
+            var key = $"{gridId}_{x}_{y}";
+            var marker = await markerRepository.GetMarkerByKeyAsync(key);
+            var grid = await gridRepository.GetGridAsync(gridId);
+            if (marker != null && grid != null)
+            {
+                updateNotificationService.NotifyMarkerUpdated(new MarkerEventDto
+                {
+                    Id = marker.Id,
+                    MapId = grid.Map,
+                    GridId = gridId,
+                    X = x,
+                    Y = y,
+                    Name = marker.Name,
+                    Image = marker.Image,
+                    Hidden = marker.Hidden,
+                    Ready = marker.Ready,
+                    MaxReady = marker.MaxReady,
+                    MinReady = marker.MinReady,
+                    TenantId = tenantId
+                });
+            }
         }
 
         return Results.Ok();

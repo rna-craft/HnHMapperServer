@@ -125,10 +125,15 @@ function connectSse() {
         });
 
         // Map revision event (cache busting)
+        // Note: Server sends camelCase JSON (mapId, revision)
         eventSource.addEventListener('mapRevision', function (event) {
             try {
                 const revision = JSON.parse(event.data);
-                invokeDotNetSafe('OnSseMapRevision', revision.MapId, revision.Revision);
+                if (revision && revision.mapId != null && revision.revision != null) {
+                    invokeDotNetSafe('OnSseMapRevision', revision.mapId, revision.revision);
+                } else {
+                    console.warn('[SSE] Ignoring mapRevision with null values:', revision);
+                }
             } catch (e) {
                 console.error('[SSE] Error parsing mapRevision event:', e);
             }
@@ -161,6 +166,36 @@ function connectSse() {
                 invokeDotNetSafe('OnCustomMarkerDeleted', deleteInfo);
             } catch (e) {
                 console.error('[SSE] Error parsing customMarkerDeleted event:', e);
+            }
+        });
+
+        // Game marker created event
+        eventSource.addEventListener('markerCreated', function (event) {
+            try {
+                const marker = JSON.parse(event.data);
+                invokeDotNetSafe('OnMarkerCreated', marker);
+            } catch (e) {
+                console.error('[SSE] Error parsing markerCreated event:', e);
+            }
+        });
+
+        // Game marker updated event
+        eventSource.addEventListener('markerUpdated', function (event) {
+            try {
+                const marker = JSON.parse(event.data);
+                invokeDotNetSafe('OnMarkerUpdated', marker);
+            } catch (e) {
+                console.error('[SSE] Error parsing markerUpdated event:', e);
+            }
+        });
+
+        // Game marker deleted event
+        eventSource.addEventListener('markerDeleted', function (event) {
+            try {
+                const deleteInfo = JSON.parse(event.data);
+                invokeDotNetSafe('OnMarkerDeleted', deleteInfo);
+            } catch (e) {
+                console.error('[SSE] Error parsing markerDeleted event:', e);
             }
         });
 
@@ -254,6 +289,16 @@ function connectSse() {
             }
         });
 
+        // Overlay updated event
+        eventSource.addEventListener('overlayUpdated', function (event) {
+            try {
+                const overlay = JSON.parse(event.data);
+                invokeDotNetSafe('OnOverlayUpdated', overlay);
+            } catch (e) {
+                console.error('[SSE] Error parsing overlayUpdated event:', e);
+            }
+        });
+
         // Characters snapshot event (initial full state)
         eventSource.addEventListener('charactersSnapshot', function (event) {
             console.warn('[SSE] ===== charactersSnapshot event received =====');
@@ -341,71 +386,29 @@ export function disconnectSseUpdates() {
 }
 
 /**
- * Safely invoke .NET methods from JS; ignore calls during Blazor disconnects
- * Handles "No interop methods registered" error that occurs during circuit initialization
+ * Safely invoke .NET methods from JS; silently drop calls during Blazor disconnects.
+ * Does NOT retry - SSE will send fresh data when circuit reconnects.
  */
 function invokeDotNetSafe(method, ...args) {
+    // Quick bail-out checks
+    if (!dotnetRef || typeof dotnetRef.invokeMethodAsync !== 'function') {
+        return null;
+    }
+
     try {
-        if (!dotnetRef) {
-            console.debug('[SSE] dotnetRef is null, dropping call:', method);
-            return null;
-        }
+        const promise = dotnetRef.invokeMethodAsync(method, ...args);
 
-        if (typeof dotnetRef.invokeMethodAsync !== 'function') {
-            console.debug('[SSE] invokeMethodAsync not available yet, dropping call:', method);
-            return null;
-        }
-
-        // Try to invoke the method, catching both sync and async errors
-        try {
-            const promise = dotnetRef.invokeMethodAsync(method, ...args);
-
-            if (!promise || typeof promise.catch !== 'function') {
-                console.debug('[SSE] invokeMethodAsync did not return a Promise, dropping:', method);
-                return null;
-            }
-
-            // Handle Promise rejections (async errors)
-            return promise.catch(err => {
-                // Specifically catch "No interop methods are registered for renderer X" error
-                // This happens when SSE events fire before Blazor circuit finishes initialization
-                if (err && err.message) {
-                    if (err.message.includes('No interop methods')) {
-                        console.debug('[SSE] Circuit not ready yet, retrying in 100ms:', method);
-                        // Retry once after 100ms (circuit should be ready by then)
-                        setTimeout(() => {
-                            console.debug('[SSE] Retrying after circuit init delay:', method);
-                            invokeDotNetSafe(method, ...args);
-                        }, 100);
-                        return null;
-                    }
-                    if (err.message.includes('Cannot send data') || err.message.includes('not in the') || err.message.includes('Connected')) {
-                        console.debug('[SSE] SignalR not connected yet, retrying in 100ms:', method);
-                        setTimeout(() => invokeDotNetSafe(method, ...args), 100);
-                        return null;
-                    }
-                }
-                // For other errors, log and swallow (don't crash circuit)
-                console.debug('[SSE] Error during JS->.NET call (swallowed):', method, err.message || err);
-                return null;
+        // Silently swallow all promise rejections - circuit may be disconnecting
+        if (promise && typeof promise.catch === 'function') {
+            promise.catch(() => {
+                // Intentionally empty - drop errors silently during circuit transitions
             });
-        } catch (invokeError) {
-            // Catch synchronous errors from invokeMethodAsync itself
-            // This handles "Cannot send data" errors that throw before returning a Promise
-            if (invokeError && invokeError.message &&
-                (invokeError.message.includes('Cannot send data') ||
-                    invokeError.message.includes('not in the') ||
-                    invokeError.message.includes('Connected') ||
-                    invokeError.message.includes('No interop methods'))) {
-                console.debug('[SSE] Circuit/SignalR not ready (sync error), retrying in 100ms:', method);
-                setTimeout(() => invokeDotNetSafe(method, ...args), 100);
-                return null;
-            }
-            throw invokeError; // Re-throw unexpected errors
         }
+
+        return promise;
     } catch (e) {
-        // Blazor circuit may be down; drop the call quietly
-        console.debug('[SSE] JS->.NET call dropped:', method, e.message || e);
+        // Synchronous throw from invokeMethodAsync - circuit not ready
+        // Silently drop, don't retry (fresh SSE data will arrive)
         return null;
     }
 }

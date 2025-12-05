@@ -479,9 +479,10 @@ public static class MapEndpoints
 
         if (tenantRevisions.Count > 0)
         {
+            var initialJsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
             foreach (var kv in tenantRevisions)
             {
-                var irJson = JsonSerializer.Serialize(new { MapId = kv.Key, Revision = kv.Value });
+                var irJson = JsonSerializer.Serialize(new { MapId = kv.Key, Revision = kv.Value }, initialJsonOptions);
                 await context.Response.WriteAsync($"event: mapRevision\ndata: {irJson}\n\n");
             }
             await context.Response.Body.FlushAsync();
@@ -525,6 +526,7 @@ public static class MapEndpoints
         var roadCreated = updateNotificationService.SubscribeToRoadCreated();
         var roadUpdated = updateNotificationService.SubscribeToRoadUpdated();
         var roadDeleted = updateNotificationService.SubscribeToRoadDeleted();
+        var overlayUpdated = updateNotificationService.SubscribeToOverlayUpdated();
         var notificationCreated = updateNotificationService.SubscribeToNotificationCreated();
         var notificationRead = updateNotificationService.SubscribeToNotificationRead();
         var notificationDismissed = updateNotificationService.SubscribeToNotificationDismissed();
@@ -532,6 +534,9 @@ public static class MapEndpoints
         var timerUpdated = updateNotificationService.SubscribeToTimerUpdated();
         var timerCompleted = updateNotificationService.SubscribeToTimerCompleted();
         var timerDeleted = updateNotificationService.SubscribeToTimerDeleted();
+        var markerCreated = updateNotificationService.SubscribeToMarkerCreated();
+        var markerUpdated = updateNotificationService.SubscribeToMarkerUpdated();
+        var markerDeleted = updateNotificationService.SubscribeToMarkerDeleted();
         var characterDeltas = hasPointerAuth ? updateNotificationService.SubscribeToCharacterDelta() : null;
 
         var tileBatch = new List<TileCacheDto>();
@@ -640,11 +645,11 @@ public static class MapEndpoints
 
                 // Check for custom marker creation events
                 // SECURITY: Filter by tenant to prevent cross-tenant marker visibility
-                while (customMarkerCreated.TryRead(out var markerCreated))
+                while (customMarkerCreated.TryRead(out var customMarker))
                 {
-                    if (markerCreated.TenantId == tenantId)
+                    if (customMarker.TenantId == tenantId)
                     {
-                        var markerJson = JsonSerializer.Serialize(markerCreated, jsonOptions);
+                        var markerJson = JsonSerializer.Serialize(customMarker, jsonOptions);
                         await context.Response.WriteAsync($"event: customMarkerCreated\ndata: {markerJson}\n\n");
                         await context.Response.Body.FlushAsync();
                     }
@@ -652,11 +657,11 @@ public static class MapEndpoints
 
                 // Check for custom marker update events
                 // SECURITY: Filter by tenant to prevent cross-tenant marker visibility
-                while (customMarkerUpdated.TryRead(out var markerUpdated))
+                while (customMarkerUpdated.TryRead(out var customMarkerUpdate))
                 {
-                    if (markerUpdated.TenantId == tenantId)
+                    if (customMarkerUpdate.TenantId == tenantId)
                     {
-                        var markerJson = JsonSerializer.Serialize(markerUpdated, jsonOptions);
+                        var markerJson = JsonSerializer.Serialize(customMarkerUpdate, jsonOptions);
                         await context.Response.WriteAsync($"event: customMarkerUpdated\ndata: {markerJson}\n\n");
                         await context.Response.Body.FlushAsync();
                     }
@@ -737,6 +742,18 @@ public static class MapEndpoints
                     }
                 }
 
+                // Check for overlay update events
+                // SECURITY: Filter by tenant to prevent cross-tenant overlay visibility
+                while (overlayUpdated.TryRead(out var overlay))
+                {
+                    if (overlay.TenantId == tenantId)
+                    {
+                        var overlayJson = JsonSerializer.Serialize(overlay, jsonOptions);
+                        await context.Response.WriteAsync($"event: overlayUpdated\ndata: {overlayJson}\n\n");
+                        await context.Response.Body.FlushAsync();
+                    }
+                }
+
                 // Check for notification creation events
                 // SECURITY: Filter by tenant and user to prevent cross-tenant notification visibility
                 while (notificationCreated.TryRead(out var notification))
@@ -813,6 +830,42 @@ public static class MapEndpoints
                     var deleteJson = JsonSerializer.Serialize(deleteDto, jsonOptions);
                     await context.Response.WriteAsync($"event: timerDeleted\ndata: {deleteJson}\n\n");
                     await context.Response.Body.FlushAsync();
+                }
+
+                // Check for game marker creation events
+                // SECURITY: Filter by tenant to prevent cross-tenant marker visibility
+                while (markerCreated.TryRead(out var gameMarker))
+                {
+                    if (gameMarker.TenantId == tenantId)
+                    {
+                        var markerJson = JsonSerializer.Serialize(gameMarker, jsonOptions);
+                        await context.Response.WriteAsync($"event: markerCreated\ndata: {markerJson}\n\n");
+                        await context.Response.Body.FlushAsync();
+                    }
+                }
+
+                // Check for game marker update events
+                // SECURITY: Filter by tenant to prevent cross-tenant marker visibility
+                while (markerUpdated.TryRead(out var gameMarkerUpdate))
+                {
+                    if (gameMarkerUpdate.TenantId == tenantId)
+                    {
+                        var markerJson = JsonSerializer.Serialize(gameMarkerUpdate, jsonOptions);
+                        await context.Response.WriteAsync($"event: markerUpdated\ndata: {markerJson}\n\n");
+                        await context.Response.Body.FlushAsync();
+                    }
+                }
+
+                // Check for game marker deletion events
+                // SECURITY: Filter by tenant to prevent cross-tenant marker visibility
+                while (markerDeleted.TryRead(out var gameMarkerDelete))
+                {
+                    if (gameMarkerDelete.TenantId == tenantId)
+                    {
+                        var deleteJson = JsonSerializer.Serialize(gameMarkerDelete, jsonOptions);
+                        await context.Response.WriteAsync($"event: markerDeleted\ndata: {deleteJson}\n\n");
+                        await context.Response.Body.FlushAsync();
+                    }
                 }
 
                 // Check for character delta events (coalesce updates)

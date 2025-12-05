@@ -96,12 +96,12 @@ public class InvitationService : IInvitationService
         }
     }
 
-    public async Task<bool> RevokeInvitationAsync(int invitationId)
+    public async Task<bool> RevokeInvitationAsync(string tenantId, int invitationId)
     {
         try
         {
             var client = _httpClientFactory.CreateClient("API");
-            var response = await client.DeleteAsync($"/api/invitations/{invitationId}");
+            var response = await client.DeleteAsync($"/api/tenants/{tenantId}/invitations/{invitationId}");
 
             if (response.IsSuccessStatusCode)
             {

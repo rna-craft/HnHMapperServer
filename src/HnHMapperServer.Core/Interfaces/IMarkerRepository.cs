@@ -30,4 +30,14 @@ public interface IMarkerRepository
     /// </summary>
     /// <returns>Number of markers actually updated</returns>
     Task<int> BatchUpdateReadinessAsync(List<(int markerId, bool ready, long maxReady, long minReady)> updates, string tenantId);
+
+    /// <summary>
+    /// Gets orphaned markers (markers whose GridId doesn't exist in the Grids table).
+    /// </summary>
+    Task<List<Marker>> GetOrphanedMarkersAsync(string tenantId);
+
+    /// <summary>
+    /// Deletes markers by their IDs in a batch operation.
+    /// </summary>
+    Task<int> DeleteMarkersByIdsAsync(List<int> markerIds, string tenantId);
 }

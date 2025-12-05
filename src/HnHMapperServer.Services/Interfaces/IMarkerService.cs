@@ -43,4 +43,10 @@ public interface IMarkerService
     /// Updates readiness for all markers (background task)
     /// </summary>
     Task UpdateReadinessOnMarkersAsync(string tenantId);
+
+    /// <summary>
+    /// Cleans up orphaned markers (markers with missing grids).
+    /// Returns the count of markers deleted.
+    /// </summary>
+    Task<int> CleanupOrphanedMarkersAsync(string tenantId);
 }

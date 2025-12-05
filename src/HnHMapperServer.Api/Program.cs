@@ -121,6 +121,7 @@ builder.Services.AddSingleton<IUpdateNotificationService, UpdateNotificationServ
 builder.Services.AddSingleton<ICharacterService, CharacterService>();
 builder.Services.AddSingleton<HnHMapperServer.Api.Services.MapRevisionCache>();
 builder.Services.AddSingleton<IBuildInfoProvider, BuildInfoProvider>();
+builder.Services.AddSingleton<IPendingMarkerService, PendingMarkerService>();  // In-memory queue for markers before grids exist
 builder.Services.AddScoped<ITileService, TileService>();
 builder.Services.AddScoped<IGridService, GridService>();
 builder.Services.AddScoped<IMarkerService, MarkerService>();
@@ -191,6 +192,7 @@ builder.Services.AddHostedService<ZoomTileRebuildService>(); // Zoom tile rebuil
 builder.Services.AddHostedService<TimerCheckService>(); // Timer monitoring and notification service
 builder.Services.AddHostedService<PreviewCleanupService>(); // Map preview cleanup service (7 day retention)
 builder.Services.AddHostedService<HmapTempCleanupService>(); // HMAP temp file cleanup service (7 day retention)
+builder.Services.AddHostedService<OrphanedMarkerCleanupService>(); // Orphaned marker cleanup service
 
 // Configure shared data protection for cookie sharing with Web
 var dataProtectionPath = Path.Combine(

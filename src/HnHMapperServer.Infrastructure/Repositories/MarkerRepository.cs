@@ -281,6 +281,32 @@ public class MarkerRepository : IMarkerRepository
         return markers.Count;
     }
 
+    public async Task<List<Marker>> GetOrphanedMarkersAsync(string tenantId)
+    {
+        // Find markers where the GridId doesn't exist in the Grids table for this tenant
+        var orphanedMarkers = await _context.Markers
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(m => m.TenantId == tenantId)
+            .Where(m => !_context.Grids.Any(g => g.Id == m.GridId && g.TenantId == tenantId))
+            .ToListAsync();
+
+        return orphanedMarkers.Select(MapToDomain).ToList();
+    }
+
+    public async Task<int> DeleteMarkersByIdsAsync(List<int> markerIds, string tenantId)
+    {
+        if (markerIds.Count == 0)
+            return 0;
+
+        var deleted = await _context.Markers
+            .IgnoreQueryFilters()
+            .Where(m => m.TenantId == tenantId && markerIds.Contains(m.Id))
+            .ExecuteDeleteAsync();
+
+        return deleted;
+    }
+
     private static Marker MapToDomain(MarkerEntity entity) => new Marker
     {
         Id = entity.Id,

@@ -1,0 +1,206 @@
+@inject IHttpClientFactory HttpClientFactory
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.h6" Class="mb-4">
+            Grant SuperAdmin Role
+        </MudText>
+
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-4">
+            SuperAdmins have full system access. Only grant this role to trusted users.
+        </MudAlert>
+
+        <MudStack Spacing="3">
+            @if (_loadingUsers)
+            {
+                <div class="d-flex justify-center align-center" style="min-height: 100px;">
+                    <MudProgressCircular Indeterminate="true" Size="Size.Medium" />
+                </div>
+            }
+            else
+            {
+                <MudAutocomplete T="UserDto"
+                                 Label="Select User"
+                                 @bind-Value="_selectedUser"
+                                 SearchFunc="SearchUsers"
+                                 ToStringFunc="@(u => u?.Username ?? string.Empty)"
+                                 Variant="Variant.Outlined"
+                                 Dense="true"
+                                 ShowProgressIndicator="true"
+                                 HelperText="Search for a user by username">
+                    <ItemTemplate Context="user">
+                        <MudStack Row="true" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Class="me-2" />
+                            <MudText>@user.Username</MudText>
+                            @if (!string.IsNullOrEmpty(user.Email))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="ms-2">(@user.Email)</MudText>
+                            }
+                        </MudStack>
+                    </ItemTemplate>
+                </MudAutocomplete>
+
+                @if (_selectedUser != null)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        <MudText Typo="Typo.body2">
+                            You are about to grant SuperAdmin role to <strong>@_selectedUser.Username</strong>.
+                            This will give them full system access.
+                        </MudText>
+                    </MudAlert>
+                }
+            }
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true">@_errorMessage</MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton OnClick="Submit"
+                   Variant="Variant.Filled"
+                   Color="Color.Warning"
+                   Disabled="@(_isSubmitting || _selectedUser == null)">
+            @if (_isSubmitting)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                <span>Granting...</span>
+            }
+            else
+            {
+                <span>Grant SuperAdmin</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    public IMudDialogInstance? MudDialog { get; set; }
+
+    [Parameter]
+    public List<string> ExistingSuperAdminIds { get; set; } = new();
+
+    private List<UserDto> _allUsers = new();
+    private UserDto? _selectedUser;
+    private bool _loadingUsers = true;
+    private bool _isSubmitting;
+    private string _errorMessage = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsers();
+    }
+
+    private async Task LoadUsers()
+    {
+        _loadingUsers = true;
+
+        try
+        {
+            var apiClient = HttpClientFactory.CreateClient("API");
+            var response = await apiClient.GetAsync("/api/superadmin/users");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var users = await response.Content.ReadFromJsonAsync<List<UserDto>>(
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                // Filter out existing SuperAdmins
+                _allUsers = (users ?? new List<UserDto>())
+                    .Where(u => !ExistingSuperAdminIds.Contains(u.UserId))
+                    .ToList();
+            }
+            else
+            {
+                _errorMessage = "Failed to load users";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading users: {ex.Message}";
+        }
+        finally
+        {
+            _loadingUsers = false;
+        }
+    }
+
+    private Task<IEnumerable<UserDto>> SearchUsers(string searchText, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            return Task.FromResult(_allUsers.Take(10).AsEnumerable());
+        }
+
+        var results = _allUsers
+            .Where(u => u.Username.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
+                       (u.Email?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false))
+            .Take(10);
+
+        return Task.FromResult(results);
+    }
+
+    private void Cancel()
+    {
+        MudDialog?.Cancel();
+    }
+
+    private async Task Submit()
+    {
+        if (_selectedUser == null)
+            return;
+
+        _errorMessage = string.Empty;
+        _isSubmitting = true;
+
+        try
+        {
+            var apiClient = HttpClientFactory.CreateClient("API");
+            var response = await apiClient.PostAsync($"/api/superadmin/users/{_selectedUser.UserId}/grant-superadmin", null);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add($"SuperAdmin role granted to {_selectedUser.Username}", Severity.Success);
+                MudDialog?.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                try
+                {
+                    var errorObj = System.Text.Json.JsonSerializer.Deserialize<ErrorResponse>(errorContent,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    _errorMessage = errorObj?.Error ?? "Failed to grant SuperAdmin role";
+                }
+                catch
+                {
+                    _errorMessage = $"Failed to grant SuperAdmin role: {response.StatusCode}";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private class UserDto
+    {
+        public string UserId { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string? Email { get; set; }
+    }
+
+    private class ErrorResponse
+    {
+        public string Error { get; set; } = string.Empty;
+    }
+}

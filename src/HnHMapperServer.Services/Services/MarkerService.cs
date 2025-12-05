@@ -9,15 +9,21 @@ public class MarkerService : IMarkerService
 {
     private readonly IMarkerRepository _markerRepository;
     private readonly IGridRepository _gridRepository;
+    private readonly IPendingMarkerService _pendingMarkerService;
+    private readonly ITenantContextAccessor _tenantContext;
     private readonly ILogger<MarkerService> _logger;
 
     public MarkerService(
         IMarkerRepository markerRepository,
         IGridRepository gridRepository,
+        IPendingMarkerService pendingMarkerService,
+        ITenantContextAccessor tenantContext,
         ILogger<MarkerService> logger)
     {
         _markerRepository = markerRepository;
         _gridRepository = gridRepository;
+        _pendingMarkerService = pendingMarkerService;
+        _tenantContext = tenantContext;
         _logger = logger;
     }
 
@@ -26,11 +32,15 @@ public class MarkerService : IMarkerService
         var markers = await _markerRepository.GetAllMarkersAsync();
         var frontendMarkers = new List<FrontendMarker>();
 
+        var orphanedCount = 0;
         foreach (var marker in markers)
         {
             var grid = await _gridRepository.GetGridAsync(marker.GridId);
             if (grid == null)
+            {
+                orphanedCount++;
                 continue;
+            }
 
             frontendMarkers.Add(new FrontendMarker
             {
@@ -46,6 +56,12 @@ public class MarkerService : IMarkerService
                 MinReady = marker.MinReady,
                 Ready = marker.Ready
             });
+        }
+
+        if (orphanedCount > 0)
+        {
+            _logger.LogWarning("Skipped {OrphanedCount} orphaned markers (missing grids) out of {TotalCount} total",
+                orphanedCount, markers.Count);
         }
 
         return frontendMarkers;
@@ -79,6 +95,17 @@ public class MarkerService : IMarkerService
 
     public async Task UpdateMarkerAsync(string gridId, int x, int y, string name, string image, bool ready)
     {
+        // Check if grid exists first
+        var grid = await _gridRepository.GetGridAsync(gridId);
+        if (grid == null)
+        {
+            // Grid doesn't exist yet - queue marker in memory for later
+            var tenantId = _tenantContext.GetRequiredTenantId();
+            _pendingMarkerService.QueueMarker(tenantId, gridId, x, y, name, image);
+            _logger.LogDebug("Marker {Name} queued as pending (grid {GridId} not yet uploaded)", name, gridId);
+            return;
+        }
+
         var key = $"{gridId}_{x}_{y}";
         var existing = await _markerRepository.GetMarkerByKeyAsync(key);
 
@@ -223,5 +250,33 @@ public class MarkerService : IMarkerService
                     name, tenantId);
             }
         }
+    }
+
+    public async Task<int> CleanupOrphanedMarkersAsync(string tenantId)
+    {
+        var orphanedMarkers = await _markerRepository.GetOrphanedMarkersAsync(tenantId);
+
+        if (orphanedMarkers.Count == 0)
+            return 0;
+
+        // Log details about orphaned markers before deleting
+        var markerTypes = orphanedMarkers
+            .GroupBy(m => m.Name)
+            .Select(g => $"{g.Key}: {g.Count()}")
+            .ToList();
+
+        _logger.LogWarning(
+            "Found {Count} orphaned markers for tenant {TenantId}. Types: {Types}",
+            orphanedMarkers.Count, tenantId, string.Join(", ", markerTypes));
+
+        // Delete orphaned markers
+        var markerIds = orphanedMarkers.Select(m => m.Id).ToList();
+        var deleted = await _markerRepository.DeleteMarkersByIdsAsync(markerIds, tenantId);
+
+        _logger.LogInformation(
+            "Deleted {Count} orphaned markers for tenant {TenantId}",
+            deleted, tenantId);
+
+        return deleted;
     }
 }

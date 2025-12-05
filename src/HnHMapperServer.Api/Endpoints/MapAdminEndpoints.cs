@@ -34,10 +34,12 @@ public static class MapAdminEndpoints
 
     /// <summary>
     /// GET /admin/maps
-    /// Lists all maps in the current tenant with their metadata.
+    /// Lists maps in the current tenant with server-side pagination.
     /// </summary>
     private static async Task<IResult> GetMaps(
-        IMapRepository mapRepository,
+        int page,
+        int pageSize,
+        string? search,
         ApplicationDbContext db,
         ITenantContextAccessor tenantContext)
     {
@@ -47,26 +49,47 @@ public static class MapAdminEndpoints
             return Results.Unauthorized();
         }
 
-        var maps = await mapRepository.GetAllMapsAsync();
+        // Sanitize pagination params
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 25;
+        if (pageSize > 100) pageSize = 100;
 
-        // Convert to AdminMapDto with grid counts
-        var mapDtos = new List<AdminMapDto>();
-        foreach (var map in maps)
+        // Build query with tenant filter
+        var query = db.Maps
+            .AsNoTracking()
+            .Where(m => m.TenantId == tenantId);
+
+        // Apply search filter
+        if (!string.IsNullOrWhiteSpace(search))
         {
-            var gridCount = await db.Grids
-                .Where(g => g.Map == map.Id && g.TenantId == tenantId)
-                .CountAsync();
-
-            mapDtos.Add(new AdminMapDto
-            {
-                Id = map.Id,
-                Name = map.Name,
-                Hidden = map.Hidden,
-                Priority = map.Priority
-            });
+            query = query.Where(m => m.Name.Contains(search));
         }
 
-        return Results.Ok(mapDtos);
+        // Get total count
+        var totalCount = await query.CountAsync();
+
+        // Get paginated maps
+        var maps = await query
+            .OrderBy(m => m.Priority)
+            .ThenBy(m => m.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(m => new AdminMapDto
+            {
+                Id = m.Id,
+                Name = m.Name,
+                Hidden = m.Hidden,
+                Priority = m.Priority
+            })
+            .ToListAsync();
+
+        return Results.Ok(new PagedResult<AdminMapDto>
+        {
+            Items = maps,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        });
     }
 
     /// <summary>

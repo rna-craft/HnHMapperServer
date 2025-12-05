@@ -30,6 +30,7 @@ public interface IInvitationService
     /// <summary>
     /// Revokes an invitation
     /// </summary>
+    /// <param name="tenantId">The tenant ID</param>
     /// <param name="invitationId">The invitation ID to revoke</param>
-    Task<bool> RevokeInvitationAsync(int invitationId);
+    Task<bool> RevokeInvitationAsync(string tenantId, int invitationId);
 }

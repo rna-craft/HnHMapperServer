@@ -215,67 +215,85 @@
             <MudButton Variant="Variant.Filled"
                        Color="Color.Primary"
                        StartIcon="@Icons.Material.Filled.Refresh"
-                       OnClick="LoadMaps"
+                       OnClick="@(() => dataGrid?.ReloadServerData())"
                        Disabled="@isLoading">
                 Refresh
             </MudButton>
         </div>
 
-<MudTable Items="@maps" Hover="true" Striped="true" Dense="true" Elevation="0" Loading="@isLoading">
+<MudDataGrid T="AdminMapDto"
+             @ref="dataGrid"
+             ServerData="@LoadMapsAsync"
+             Hover="true"
+             Striped="true"
+             Dense="true"
+             Elevation="0"
+             Loading="@isLoading">
+    <ToolBarContent>
+        <MudTextField T="string"
+                      @bind-Value="searchText"
+                      Placeholder="Search maps..."
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search"
+                      IconSize="Size.Medium"
+                      Immediate="true"
+                      DebounceInterval="300"
+                      OnDebounceIntervalElapsed="@(() => dataGrid?.ReloadServerData())"
+                      Class="mt-0" />
+    </ToolBarContent>
+    <NoRecordsContent>
+        <MudAlert Severity="Severity.Info" Class="ma-4">
+            No maps found. Maps will be created automatically when clients upload grid data.
+        </MudAlert>
+    </NoRecordsContent>
     <LoadingContent>
         <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="pa-8">
             <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
             <MudText Typo="Typo.body1" Color="Color.Default">Loading maps...</MudText>
         </MudStack>
     </LoadingContent>
-    <NoRecordsContent>
-        <MudAlert Severity="Severity.Info" Class="ma-4">
-            No maps found. Maps will be created automatically when clients upload grid data.
-        </MudAlert>
-    </NoRecordsContent>
-    <HeaderContent>
-        <MudTh>ID</MudTh>
-        <MudTh>Name</MudTh>
-        <MudTh>Hidden</MudTh>
-        <MudTh>Priority</MudTh>
-        <MudTh Style="text-align: right;">Actions</MudTh>
-    </HeaderContent>
-    <RowTemplate>
-        <MudTd DataLabel="ID">@context.Id</MudTd>
-        <MudTd DataLabel="Name">
-            <MudText>@context.Name</MudText>
-        </MudTd>
-        <MudTd DataLabel="Hidden">
-            @if (context.Hidden)
-            {
-                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.VisibilityOff">Hidden</MudChip>
-            }
-            else
-            {
-                <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.Visibility">Visible</MudChip>
-            }
-        </MudTd>
-        <MudTd DataLabel="Priority">@context.Priority</MudTd>
-        <MudTd DataLabel="Actions" Style="text-align: right;">
-            <MudIconButton Icon="@Icons.Material.Filled.Edit"
-                           Color="Color.Primary"
-                           Size="Size.Small"
-                           OnClick="@(() => ShowEditDialog(context))"
-                           Title="Edit map" />
-            <MudIconButton Icon="@Icons.Material.Filled.Delete"
-                           Color="Color.Error"
-                           Size="Size.Small"
-                           OnClick="@(() => ShowDeleteConfirmation(context))"
-                           Title="Delete map" />
-        </MudTd>
-    </RowTemplate>
-</MudTable>
+    <Columns>
+        <PropertyColumn Property="x => x.Id" Title="ID" />
+        <PropertyColumn Property="x => x.Name" Title="Name" />
+        <TemplateColumn Title="Hidden">
+            <CellTemplate>
+                @if (context.Item.Hidden)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.VisibilityOff">Hidden</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.Visibility">Visible</MudChip>
+                }
+            </CellTemplate>
+        </TemplateColumn>
+        <PropertyColumn Property="x => x.Priority" Title="Priority" />
+        <TemplateColumn Title="Actions" CellStyle="text-align: right;">
+            <CellTemplate>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                               Color="Color.Primary"
+                               Size="Size.Small"
+                               OnClick="@(() => ShowEditDialog(context.Item))"
+                               Title="Edit map" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                               Color="Color.Error"
+                               Size="Size.Small"
+                               OnClick="@(() => ShowDeleteConfirmation(context.Item))"
+                               Title="Delete map" />
+            </CellTemplate>
+        </TemplateColumn>
+    </Columns>
+    <PagerContent>
+        <MudDataGridPager T="AdminMapDto" PageSizeOptions="new int[] { 25, 50, 100 }" />
+    </PagerContent>
+</MudDataGrid>
     </MudStack>
 </MudPaper>
 
 @code {
-    private List<AdminMapDto>? maps;
-    private bool isLoading = true;
+    private MudDataGrid<AdminMapDto>? dataGrid;
+    private string? searchText;
+    private bool isLoading;
 
     // Import state
     private IBrowserFile? selectedFile;
@@ -343,7 +361,7 @@
             Logger.LogInformation("Using default-tenant fallback");
         }
 
-        await LoadMaps();
+        // ServerData handles initial load, no need to call LoadMaps
         await CheckImportStatus();
 
         // Start periodic status polling (every second for cooldown countdown)
@@ -608,7 +626,7 @@
                     if (result.Success)
                     {
                         Snackbar.Add($"Import completed: {result.MapsCreated} maps, {result.GridsImported} grids imported, {result.GridsSkipped} skipped in {result.Duration:F1}s", Severity.Success);
-                        await LoadMaps();
+                        await (dataGrid?.ReloadServerData() ?? Task.CompletedTask);
                     }
                     else
                     {
@@ -686,19 +704,31 @@
     }
 
     /// <summary>
-    /// Fetch all maps from the admin API.
+    /// Server-side data loader for MudDataGrid pagination.
     /// </summary>
-    private async Task LoadMaps()
+    private async Task<GridData<AdminMapDto>> LoadMapsAsync(GridState<AdminMapDto> state)
     {
         isLoading = true;
         try
         {
+            var page = state.Page + 1; // MudDataGrid is 0-indexed
+            var pageSize = state.PageSize;
+
+            var url = $"/admin/maps?page={page}&pageSize={pageSize}";
+            if (!string.IsNullOrWhiteSpace(searchText))
+                url += $"&search={Uri.EscapeDataString(searchText)}";
+
             var httpClient = HttpClientFactory.CreateClient("API");
-            var response = await httpClient.GetAsync("/admin/maps");
+            var response = await httpClient.GetAsync(url);
 
             if (response.IsSuccessStatusCode)
             {
-                maps = await response.Content.ReadFromJsonAsync<List<AdminMapDto>>();
+                var result = await response.Content.ReadFromJsonAsync<PagedResult<AdminMapDto>>();
+                return new GridData<AdminMapDto>
+                {
+                    Items = result?.Items ?? new(),
+                    TotalItems = result?.TotalCount ?? 0
+                };
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
             {
@@ -708,19 +738,32 @@
             {
                 Snackbar.Add($"Failed to load maps: {response.StatusCode}", Severity.Error);
             }
+
+            return new GridData<AdminMapDto> { Items = new List<AdminMapDto>(), TotalItems = 0 };
         }
         catch (HttpRequestException ex)
         {
             Snackbar.Add($"Network error loading maps: {ex.Message}", Severity.Error);
+            return new GridData<AdminMapDto> { Items = new List<AdminMapDto>(), TotalItems = 0 };
         }
         catch (Exception ex)
         {
             Snackbar.Add($"Failed to load maps: {ex.Message}", Severity.Error);
+            return new GridData<AdminMapDto> { Items = new List<AdminMapDto>(), TotalItems = 0 };
         }
         finally
         {
             isLoading = false;
         }
+    }
+
+    // PagedResult DTO for API response
+    private class PagedResult<T>
+    {
+        public List<T> Items { get; set; } = new();
+        public int TotalCount { get; set; }
+        public int Page { get; set; }
+        public int PageSize { get; set; }
     }
 
     /// <summary>
@@ -748,7 +791,7 @@
         if (!result.Canceled)
         {
             // Reload maps to reflect the changes
-            await LoadMaps();
+            await (dataGrid?.ReloadServerData() ?? Task.CompletedTask);
         }
     }
 
@@ -789,12 +832,12 @@
             {
                 var result = await response.Content.ReadFromJsonAsync<DeleteMapResponseDto>();
                 Snackbar.Add(result?.Message ?? "Map deleted successfully", Severity.Success);
-                await LoadMaps();
+                await (dataGrid?.ReloadServerData() ?? Task.CompletedTask);
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 Snackbar.Add("Map not found. It may have already been deleted.", Severity.Warning);
-                await LoadMaps();
+                await (dataGrid?.ReloadServerData() ?? Task.CompletedTask);
             }
             else
             {

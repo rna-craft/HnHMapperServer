@@ -99,3 +99,21 @@ public class CharacterDeltaModel
     public List<CharacterModel> Updates { get; set; } = new();
     public List<int> Deletions { get; set; } = new();
 }
+
+/// <summary>
+/// Event model for SSE game marker events
+/// </summary>
+public class MarkerEventModel
+{
+    public int Id { get; set; }
+    public int MapId { get; set; }
+    public string GridId { get; set; } = string.Empty;
+    public int X { get; set; }
+    public int Y { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Image { get; set; } = string.Empty;
+    public bool Hidden { get; set; }
+    public long MaxReady { get; set; } = -1;
+    public long MinReady { get; set; } = -1;
+    public bool Ready { get; set; }
+}
